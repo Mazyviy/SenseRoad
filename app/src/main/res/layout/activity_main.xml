@@ -38,6 +38,16 @@ tools:context=".MainActivity">
     tools:ignore="MissingConstraints"
     tools:layout_editor_absoluteX="4dp" />
 
+<TextView
+    android:id="@+id/accelerometerLinearTextView"
+    android:layout_width="match_parent"
+    android:layout_height="20dp"
+    android:layout_marginTop="10dp"
+    android:text="accel_l"
+    app:layout_constraintTop_toBottomOf="@+id/accelerometerTextView"
+    tools:ignore="MissingConstraints"
+    tools:layout_editor_absoluteX="4dp" />
+
     <org.osmdroid.views.MapView
         android:id="@+id/mapView"
         android:layout_width="wrap_content"

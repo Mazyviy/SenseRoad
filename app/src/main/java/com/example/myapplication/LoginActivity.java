@@ -11,6 +11,7 @@ import android.net.NetworkInfo;
 import android.os.AsyncTask;
 import android.os.Bundle;
 import android.text.TextUtils;
+import android.util.Log;
 import android.view.View;
 import android.widget.Button;
 import android.widget.EditText;
@@ -21,16 +22,20 @@ import org.json.JSONObject;
 
 import java.io.BufferedReader;
 import java.io.IOException;
+import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.io.OutputStream;
+import java.io.PrintWriter;
 import java.net.HttpURLConnection;
+import java.net.Socket;
 import java.net.URL;
+
+import javax.net.ssl.HttpsURLConnection;
 
 public class LoginActivity extends AppCompatActivity implements View.OnClickListener {
 
     private boolean isInternetConnected;
     private boolean isServerConnected;
-    private static final String URL = "https://upp.bestmon.keenetic.pro";
     private SharedPreferences sharedPreferences;
     private static final String EMAIL_PREF = "email_pref";
     private static final String EMAIL_KEY = "email_key";
@@ -68,6 +73,7 @@ public class LoginActivity extends AppCompatActivity implements View.OnClickList
     }
 
     public void onClick(View v) {
+
         String emailText = String.valueOf(email.getText());
 
         InternetConnection r1 = new InternetConnection();
@@ -77,13 +83,14 @@ public class LoginActivity extends AppCompatActivity implements View.OnClickList
         t1.start();
         t2.start();
 
+
         if (isInternetConnected==false) {
             Toast.makeText(LoginActivity.this, "Нет доступа к интернету! Для регистрации требуется интернет", Toast.LENGTH_SHORT).show();
         }
         if (isInternetConnected==true & isServerConnected==false) {
             Toast.makeText(LoginActivity.this, "Сервер недоступен, приносим свои извинения. Мы постараемся как можно быстрее исправить инцидент.", Toast.LENGTH_SHORT).show();
         }
-        if (isServerConnected==true & isServerConnected==true) {
+        if (isServerConnected==true & isInternetConnected==true) {
             new CheckEmailTask().execute(emailText);
         }
     }
@@ -97,11 +104,12 @@ public class LoginActivity extends AppCompatActivity implements View.OnClickList
         }
     }
 
+
     class ServerConnection implements Runnable {
         @Override
         public void run() {
             try {
-                URL serverUrl = new URL(URL);
+                URL serverUrl = new URL(String.valueOf(R.string.server_address));
                 HttpURLConnection connection = (HttpURLConnection) serverUrl.openConnection();
                 connection.setRequestMethod("GET");
                 connection.connect();
@@ -130,7 +138,7 @@ public class LoginActivity extends AppCompatActivity implements View.OnClickList
             this.email = params[0];
 
             try {
-                URL serverUrl = new URL(URL);
+                URL serverUrl = new URL(String.valueOf(R.string.server_address));
                 HttpURLConnection connection = (HttpURLConnection) serverUrl.openConnection();
                 connection.setRequestMethod("POST");
                 connection.setRequestProperty("Content-Type", "application/json");
