@@ -33,7 +33,7 @@ import java.net.URL;
 import javax.net.ssl.HttpsURLConnection;
 
 public class LoginActivity extends AppCompatActivity implements View.OnClickListener {
-
+    private String URL = "http://89.179.33.18:27011";
     private boolean isInternetConnected;
     private boolean isServerConnected;
     private SharedPreferences sharedPreferences;
@@ -109,7 +109,7 @@ public class LoginActivity extends AppCompatActivity implements View.OnClickList
         @Override
         public void run() {
             try {
-                URL serverUrl = new URL(String.valueOf(R.string.server_address));
+                URL serverUrl = new URL(URL);
                 HttpURLConnection connection = (HttpURLConnection) serverUrl.openConnection();
                 connection.setRequestMethod("GET");
                 connection.connect();
@@ -138,7 +138,7 @@ public class LoginActivity extends AppCompatActivity implements View.OnClickList
             this.email = params[0];
 
             try {
-                URL serverUrl = new URL(String.valueOf(R.string.server_address));
+                URL serverUrl = new URL(URL);
                 HttpURLConnection connection = (HttpURLConnection) serverUrl.openConnection();
                 connection.setRequestMethod("POST");
                 connection.setRequestProperty("Content-Type", "application/json");

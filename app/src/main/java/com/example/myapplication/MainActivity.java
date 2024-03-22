@@ -1,11 +1,17 @@
 package com.example.myapplication;
 
+import androidx.activity.result.ActivityResultCallback;
+import androidx.activity.result.ActivityResultLauncher;
+import androidx.activity.result.contract.ActivityResultContract;
+import androidx.activity.result.contract.ActivityResultContracts;
 import androidx.annotation.NonNull;
 import androidx.appcompat.app.AlertDialog;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.core.app.ActivityCompat;
 
 import android.annotation.SuppressLint;
+import android.app.ActivityManager;
+import android.app.Instrumentation;
 import android.app.PendingIntent;
 import android.content.BroadcastReceiver;
 import android.content.DialogInterface;
@@ -35,6 +41,7 @@ import androidx.appcompat.app.AppCompatActivity;
 import androidx.core.content.ContextCompat;
 import androidx.lifecycle.Observer;
 
+import android.os.Parcelable;
 import android.os.PowerManager;
 import android.provider.Settings;
 import android.text.TextUtils;
@@ -63,6 +70,7 @@ import java.io.IOException;
 import java.io.InputStreamReader;
 import java.io.OutputStream;
 import java.io.OutputStreamWriter;
+import java.io.Serializable;
 import java.net.HttpURLConnection;
 import java.net.URL;
 import java.text.SimpleDateFormat;
@@ -71,6 +79,7 @@ import java.util.Arrays;
 import java.util.Date;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.concurrent.CopyOnWriteArrayList;
 
 //public class MainActivity extends AppCompatActivity implements SensorEventListener, LocationListener {
@@ -86,15 +95,10 @@ public class MainActivity extends AppCompatActivity {
 
     private Marker currentMarker;
 
-    private List<String> MY_PERMISSIONS = Arrays.asList(
-            Manifest.permission.ACCESS_FINE_LOCATION,
-            Manifest.permission.ACCESS_BACKGROUND_LOCATION,
-            Manifest.permission.WRITE_EXTERNAL_STORAGE,
-            Manifest.permission.INTERNET,
-            Manifest.permission.ACCESS_NETWORK_STATE,
-            Manifest.permission.FOREGROUND_SERVICE,
-            Manifest.permission.WAKE_LOCK
-    );
+
+    ActivityResultLauncher<String[]> mPermissionResultLauncher;
+    private boolean isWritePermissionGranted = false;
+    private boolean isLocationPermissionGranted = false;
 
 
     private MyBroadcastReceiver receiver;
@@ -105,21 +109,18 @@ public class MainActivity extends AppCompatActivity {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
 
-        //wake lock
-        final PowerManager pm = (PowerManager) getSystemService(Context.POWER_SERVICE);
-        mWakeLock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "WakeLockSensRoad");
-        mWakeLock.acquire();
-        getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
-
         // Инициализация текстовых полей
-        accelerometerTextView = findViewById(R.id.accelerometerTextView);
         gpsTextView = findViewById(R.id.gpsTextView);
         speedTextView = findViewById(R.id.speedTextView);
+        accelerometerTextView = findViewById(R.id.accelerometerTextView);
+        accelerometerLinearTextView = findViewById(R.id.accelerometerLinearTextView);
+
 
         // Регистрация приемника широковещательных сообщений
         receiver = new MyBroadcastReceiver(new Handler()); // Create the receiver
         registerReceiver(receiver, new IntentFilter("gps_data_updated")); // Register receiver
         registerReceiver(receiver, new IntentFilter("accelerometr_data_updated")); // Register receiver
+
 
         // Инициализация карты
         Configuration.getInstance().setUserAgentValue(getPackageName());
@@ -130,48 +131,73 @@ public class MainActivity extends AppCompatActivity {
         ScaleBarOverlay myScaleBarOverlay = new ScaleBarOverlay(mapView);
         mapView.getOverlays().add(myScaleBarOverlay);
 
+        ActivityResultCallback<Map<String, Boolean>> callback = new ActivityResultCallback<Map<String, Boolean>>() {
+            @Override
+            public void onActivityResult(Map<String, Boolean> result) {
+                if(result.get(Manifest.permission.WRITE_EXTERNAL_STORAGE) != null) {
+                    isWritePermissionGranted = result.get(Manifest.permission.WRITE_EXTERNAL_STORAGE);
+                }
 
-        if (!isGpsEnabled()) {
-            showGpsReminderNotification();
-        }
+                if(result.get(Manifest.permission.ACCESS_FINE_LOCATION) != null) {
+                    isLocationPermissionGranted = result.get(Manifest.permission.ACCESS_FINE_LOCATION);
+                }
 
-        // permission
-        if (!checkPermissions()) {
-            // Если нет, то запрашиваем разрешения
-            requestPermissions();
-        }
+                if (isWritePermissionGranted && isLocationPermissionGranted) {
+                    // Запустить сервиc
+                    Intent serviceIntent = new Intent(MainActivity.this, MyService.class);
+                    startForegroundService(serviceIntent);
+                    foregroundServiceRunning();
+                } else {
+                    // Запросить разрешения заново
+                    requestPermission();
+                }
+            }
+        };
 
-        Context context = getApplicationContext();
-        Intent intent = new Intent(this, MyService.class); // Build the intent for the service
-        context.startForegroundService(intent);
-
-        //startService(new Intent(this, MyService.class));
-
+        mPermissionResultLauncher = registerForActivityResult(new ActivityResultContracts.RequestMultiplePermissions(), callback);
+        requestPermission();
 
     }
 
-    private boolean isGpsEnabled() {
-        LocationManager locationManager = (LocationManager) getSystemService(Context.LOCATION_SERVICE);
-        return locationManager.isProviderEnabled(LocationManager.GPS_PROVIDER);
+    public  boolean foregroundServiceRunning() {
+        ActivityManager activityManager = (ActivityManager) getSystemService(Context.ACTIVITY_SERVICE);
+
+        for(ActivityManager.RunningServiceInfo service : activityManager.getRunningServices(Integer.MAX_VALUE)){
+            if(MyService.class.getName().equals(service.service.getClassName())) {
+                return true;
+            }
+        }
+        return false;
     }
 
-    private void showGpsReminderNotification() {
-        LocationManager locationManager = (LocationManager) getSystemService(Context.LOCATION_SERVICE);
+    private void requestPermission(){
+        isWritePermissionGranted = ContextCompat.checkSelfPermission(
+                this,
+                Manifest.permission.WRITE_EXTERNAL_STORAGE
+        ) == PackageManager.PERMISSION_GRANTED;
 
-        if (!locationManager.isProviderEnabled(LocationManager.GPS_PROVIDER)) {
-            AlertDialog.Builder alertDialogBuilder = new AlertDialog.Builder(this);
-            alertDialogBuilder.setMessage("Включите GPS для получения местоположения")
-                    .setCancelable(false)
-                    .setPositiveButton("Включить GPS",
-                            new DialogInterface.OnClickListener() {
-                                public void onClick(DialogInterface dialog, int id) {
-                                    Intent intent = new Intent(Settings.ACTION_LOCATION_SOURCE_SETTINGS);
-                                    startActivity(intent);
-                                }
-                            });
-            AlertDialog alert = alertDialogBuilder.create();
-            alert.show();
-    }}
+        isLocationPermissionGranted = ContextCompat.checkSelfPermission(
+                this,
+                Manifest.permission.ACCESS_FINE_LOCATION
+        ) == PackageManager.PERMISSION_GRANTED;
+
+        List<String> permissionRequest = new ArrayList<String>();
+        if(!isWritePermissionGranted){
+            permissionRequest.add(Manifest.permission.WRITE_EXTERNAL_STORAGE);
+        }
+        if(!isLocationPermissionGranted){
+            permissionRequest.add(Manifest.permission.ACCESS_FINE_LOCATION);
+        }
+
+        if (!permissionRequest.isEmpty()){
+            mPermissionResultLauncher.launch(permissionRequest.toArray(new String[0]));
+        }
+
+    }
+
+
+
+
 
 
     public class MyBroadcastReceiver extends BroadcastReceiver {
@@ -202,59 +228,6 @@ public class MainActivity extends AppCompatActivity {
             }
         }
     }
-
-
-    // Метод, который проверяет, получены ли все необходимые разрешения
-    private boolean checkPermissions() {
-        for (String permission : MY_PERMISSIONS) {
-            if (ActivityCompat.checkSelfPermission(this, permission) != PackageManager.PERMISSION_GRANTED) {
-                return false;
-            }
-        }
-        return true;
-    }
-
-    // Метод, который запрашивает необходимые разрешения у пользователя
-    private void requestPermissions() {
-        List<String> remainingPermissions = new ArrayList<>();
-
-        // Создаем список разрешений, которых еще не получили от пользователя
-        for (String permission : MY_PERMISSIONS) {
-            if (ActivityCompat.checkSelfPermission(this, permission) != PackageManager.PERMISSION_GRANTED) {
-                remainingPermissions.add(permission);
-            }
-        }
-        // Запрашиваем разрешения у пользователя
-        ActivityCompat.requestPermissions(this, remainingPermissions.toArray(new String[0]), 123456);
-    }
-    // Метод, который обрабатывает ответ пользователя на запрос разрешений
-    @Override
-    public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {
-        super.onRequestPermissionsResult(requestCode, permissions, grantResults);
-
-        // Проверяем код запроса, чтобы убедиться, что это наше разрешение
-        if (requestCode == 123456) {
-
-            // Проверяем, все ли разрешения были получены пользователем
-            boolean allPermissionsGranted = true;
-            for (int result : grantResults) {
-                if (result != PackageManager.PERMISSION_GRANTED) {
-                    allPermissionsGranted = false;
-                    break;
-                }
-            }
-
-            // Если все разрешения получены, выполняем остальные действия приложения
-            if (allPermissionsGranted) {
-                // ...
-            } else {
-                // Если разрешения не получены, можно показать диалог с объяснением,
-                // для чего нужны разрешения и попросить пользователя предоставить их снова.
-                requestPermissions();
-            }
-        }
-    }
-
 
 
     private void updateUIWithGPSData(double latitude, double longitude, float speed) {
@@ -299,7 +272,7 @@ public class MainActivity extends AppCompatActivity {
         super.onResume();
         Log.d("systeminfo", "onResume");
 
-        if (!isGpsEnabled()) {
+      /*  if (!isGpsEnabled()) {
             showGpsReminderNotification();
         }
 
@@ -308,7 +281,7 @@ public class MainActivity extends AppCompatActivity {
         registerReceiver(receiver, new IntentFilter("gps_data_updated")); // Register receiver
         registerReceiver(receiver, new IntentFilter("accelerometr_data_updated")); // Register receiver
 
-        mapView.onResume();
+        mapView.onResume();*/
     }
 
     @Override
@@ -318,7 +291,7 @@ public class MainActivity extends AppCompatActivity {
         Log.d("systeminfo", "onPause");
         //unregisterReceiver(receiver);
 
-        mapView.onPause();
+       // mapView.onPause();
     }
 
     @Override
@@ -329,7 +302,7 @@ public class MainActivity extends AppCompatActivity {
         //stopService(new Intent(this, MyService.class));
 
         // Отмена регистрации приемника при уничтожении активности
-        unregisterReceiver(receiver);
+        //unregisterReceiver(receiver);
     }
 
 }

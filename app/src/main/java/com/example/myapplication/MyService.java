@@ -2,10 +2,12 @@ package com.example.myapplication;
 
 import android.Manifest;
 import android.app.ActivityManager;
+import android.app.Notification;
 import android.app.NotificationChannel;
 import android.app.NotificationManager;
 import android.app.PendingIntent;
 import android.app.Service;
+import android.app.TaskStackBuilder;
 import android.content.Context;
 import android.content.Intent;
 import android.content.pm.PackageManager;
@@ -44,6 +46,7 @@ import java.io.FileWriter;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.io.OutputStream;
+import java.io.Serializable;
 import java.net.HttpURLConnection;
 import java.net.URL;
 import java.text.SimpleDateFormat;
@@ -53,6 +56,7 @@ import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.Executor;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 
 public class MyService extends Service implements SensorEventListener, LocationListener {
@@ -104,33 +108,22 @@ public class MyService extends Service implements SensorEventListener, LocationL
 
     private Sensor accelerometer_linear;
 
-
+    private Context mainActivityContext;
     public void onCreate() {
         super.onCreate();
         Log.d("LOG_TAG", "create_service");
-
-
 
         // Инициализация датчиков
         sensorManager = (SensorManager) getSystemService(Context.SENSOR_SERVICE);
         accelerometer = sensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER);
         accelerometer_linear = sensorManager.getDefaultSensor(Sensor.TYPE_LINEAR_ACCELERATION);
         locationManager = (LocationManager) getSystemService(Context.LOCATION_SERVICE);
-        nm = (NotificationManager) getSystemService(NOTIFICATION_SERVICE);
+        //nm = (NotificationManager) getSystemService(NOTIFICATION_SERVICE);
 
         dataArrayList = new CopyOnWriteArrayList<>();
     }
 
     public int onStartCommand(Intent intent, int flag, int startId) {
-
-        new Thread(
-                new Runnable() {
-                    @Override
-                    public void run() {
-
-                    }
-                }
-        )
 
         // Регистрация слушателей датчиков
         sensorManager.registerListener((SensorEventListener) this, accelerometer, SensorManager.SENSOR_DELAY_NORMAL);
@@ -139,26 +132,34 @@ public class MyService extends Service implements SensorEventListener, LocationL
         }
         locationManager.requestLocationUpdates(LocationManager.GPS_PROVIDER, GPS_UPDATE_INTERVAL, 0, (LocationListener) this);
 
-        sendNotif();
-        checkInternetConnection();
-        checkServerConnection();
-
-        handler.postDelayed(runnable, SEND_OR_SAVE_INTERVAL); // Запуск задачи через 3 минут (180000 мс)
-
-        Log.d("LOG_TAG", "start_service");
-        //return super.onStartCommand(intent, flag,startId);
-
-        if (intent != null && intent.getAction() != null) {
-            if (intent.getAction().equals("STOP_SERVICE_ACTION")) {
-                stopSelf();
-                // Удалим уведомление
-                NotificationManagerCompat notificationManager = NotificationManagerCompat.from(this);
-                notificationManager.cancel(27012);
+//////////////////////
+        // Проверка подключения
+        new Thread(new Runnable() {
+            @Override
+            public void run() {
+                checkInternetConnection();
+                checkServerConnection();
+                handler.postDelayed(runnable, SEND_OR_SAVE_INTERVAL);
             }
-        }
+        }).start();
+//////////////////
 
-        return START_STICKY;
+        final String CHANNEL_ID = "Foreground service";
+        NotificationChannel channel = new NotificationChannel(CHANNEL_ID, CHANNEL_ID, NotificationManager.IMPORTANCE_LOW);
+        getSystemService(NotificationManager.class).createNotificationChannel(channel);
+
+        Notification.Builder notification = new Notification.Builder(this, CHANNEL_ID)
+                .setContentTitle("Run SensRoad")
+                .setContentText("Запущена служба SensRoad");
+
+        startForeground(1001, notification.build());
+
+        return super.onStartCommand(intent, flag, startId);
     }
+
+
+
+
 
     private Runnable runnable = new Runnable() {
         @Override
@@ -168,55 +169,17 @@ public class MyService extends Service implements SensorEventListener, LocationL
         }
     };
 
-    void sendNotif() {
-        // Создание Intent для действия по завершению сервиса
-        Intent stopServiceIntent = new Intent(this, MyService.class);
-        stopServiceIntent.setAction("STOP_SERVICE_ACTION");
-        PendingIntent pendingIntent = PendingIntent.getService(this, 0, stopServiceIntent, 0);
-
-        // Создание канала уведомлений (необходимо только для API 26 и выше)
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            CharSequence name = "SensRoadChannel";
-            String description = "Channel for SensRoad notifications";
-            int importance = NotificationManager.IMPORTANCE_DEFAULT;
-            NotificationChannel channel = new NotificationChannel("SensRoadChannelId", name, importance);
-            channel.setDescription(description);
-
-            NotificationManager notificationManager = getSystemService(NotificationManager.class);
-            notificationManager.createNotificationChannel(channel);
-        }
 
 
 
-        // Создание уведомления с использованием NotificationCompat.Builder
-        NotificationCompat.Builder builder = new NotificationCompat.Builder(this, "SensRoadChannelId")
-                .setSmallIcon(R.drawable.ic_launcher_background)
-                .setContentTitle("Run SensRoad")
-                .setContentText("Запущена служба SensRoad")
-                .setPriority(NotificationCompat.PRIORITY_DEFAULT)
-                .setAutoCancel(true)
-                .addAction(R.drawable.ic_launcher_background, "Stop", pendingIntent);
-
-
-        // Отправка уведомления
-        NotificationManagerCompat notificationManager = NotificationManagerCompat.from(this);
-        notificationManager.notify(27012, builder.build());
-    }
-
-    private boolean isServiceRunning() {
-        ActivityManager manager = (ActivityManager) getSystemService(Context.ACTIVITY_SERVICE);
-        for (ActivityManager.RunningServiceInfo service : manager.getRunningServices(Integer.MAX_VALUE)) {
-            if (MyService.class.getName().equals(service.service.getClassName())) {
-                return true;
-            }
-        }
-        return false;
-    }
 
     public void onDestroy() {
         super.onDestroy();
         Log.d("LOG_TAG", "destroy_service");
         sensorManager.unregisterListener(this);
+
+        stopForeground(true);
+        stopSelf();
     }
 
     @Override
@@ -226,6 +189,7 @@ public class MyService extends Service implements SensorEventListener, LocationL
 
     @Override
     public void onSensorChanged(SensorEvent event) {
+        Log.d("serv", "acceleration");
         // Обработка изменений значений акселерометра
         if (event.sensor.getType() == Sensor.TYPE_ACCELEROMETER) {
             accelerometr_x = event.values[0];
@@ -250,6 +214,7 @@ public class MyService extends Service implements SensorEventListener, LocationL
 
     @Override
     public void onLocationChanged(Location location) {
+        Log.d("serv", "location");
         // Обработка изменений местоположения
         latitude = location.getLatitude();
         longitude = location.getLongitude();
