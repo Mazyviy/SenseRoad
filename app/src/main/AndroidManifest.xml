@@ -36,16 +36,13 @@
         <service
             android:name=".MyService"
             android:enabled="true"
-            android:exported="false"
-            android:foregroundServiceType="location"
             android:process=":myservice" />
 
         <receiver android:name=".MyBroadcastReceiver"
             android:exported="true">
             <intent-filter>
-                <action android:name="android.intent.action.BOOT_COMPLETED">
-
-                </action>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.PACKAGE_RESTARTED" />
             </intent-filter>
         </receiver>
 

@@ -46,7 +46,9 @@ import android.os.PowerManager;
 import android.provider.Settings;
 import android.text.TextUtils;
 import android.util.Log;
+import android.view.View;
 import android.view.WindowManager;
+import android.widget.Button;
 import android.widget.EditText;
 import android.widget.TextView;
 import android.widget.Toast;
@@ -82,16 +84,13 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.concurrent.CopyOnWriteArrayList;
 
-//public class MainActivity extends AppCompatActivity implements SensorEventListener, LocationListener {
 public class MainActivity extends AppCompatActivity {
 
-    private TextView accelerometerTextView, accelerometerLinearTextView;
+    private TextView accelerometerTextView;
     private TextView gpsTextView;
-    private TextView speedTextView;
     private MapView mapView;
     private MapController mapController;
 
-    private PowerManager.WakeLock mWakeLock;
 
     private Marker currentMarker;
 
@@ -100,7 +99,7 @@ public class MainActivity extends AppCompatActivity {
     private boolean isWritePermissionGranted = false;
     private boolean isLocationPermissionGranted = false;
 
-
+    private boolean isServiceRunning = false;
     private MyBroadcastReceiver receiver;
 
     @SuppressLint("InvalidWakeLockTag")
@@ -111,16 +110,38 @@ public class MainActivity extends AppCompatActivity {
 
         // Инициализация текстовых полей
         gpsTextView = findViewById(R.id.gpsTextView);
-        speedTextView = findViewById(R.id.speedTextView);
         accelerometerTextView = findViewById(R.id.accelerometerTextView);
-        accelerometerLinearTextView = findViewById(R.id.accelerometerLinearTextView);
 
+        final Button btnToggle = findViewById(R.id.button_toggle);
+        if (isServiceRunning){
+            btnToggle.setText("Остановить службу");
+        }
+        else {
+            btnToggle.setText("Запустить службу");
+        }
+
+        isServiceRunning = foregroundServiceRunning();
+
+
+        btnToggle.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View view) {
+                if (isServiceRunning) {
+                    stopService(new Intent(MainActivity.this, MyService.class));
+                    isServiceRunning = false;
+                    btnToggle.setText("Запустить службу");
+                } else {
+                    startForegroundService(new Intent(MainActivity.this, MyService.class));
+                    isServiceRunning = true;
+                    btnToggle.setText("Остановить службу");
+                }
+            }
+        });
 
         // Регистрация приемника широковещательных сообщений
         receiver = new MyBroadcastReceiver(new Handler()); // Create the receiver
         registerReceiver(receiver, new IntentFilter("gps_data_updated")); // Register receiver
         registerReceiver(receiver, new IntentFilter("accelerometr_data_updated")); // Register receiver
-
 
         // Инициализация карты
         Configuration.getInstance().setUserAgentValue(getPackageName());
@@ -143,12 +164,8 @@ public class MainActivity extends AppCompatActivity {
                 }
 
                 if (isWritePermissionGranted && isLocationPermissionGranted) {
-                    // Запустить сервиc
-                    Intent serviceIntent = new Intent(MainActivity.this, MyService.class);
-                    startForegroundService(serviceIntent);
-                    foregroundServiceRunning();
+                    startForegroundService(new Intent(MainActivity.this, MyService.class));
                 } else {
-                    // Запросить разрешения заново
                     requestPermission();
                 }
             }
@@ -156,6 +173,7 @@ public class MainActivity extends AppCompatActivity {
 
         mPermissionResultLauncher = registerForActivityResult(new ActivityResultContracts.RequestMultiplePermissions(), callback);
         requestPermission();
+
 
     }
 
@@ -195,11 +213,6 @@ public class MainActivity extends AppCompatActivity {
 
     }
 
-
-
-
-
-
     public class MyBroadcastReceiver extends BroadcastReceiver {
         private final Handler handler; // Handler used to execute code on the UI thread
 
@@ -220,22 +233,18 @@ public class MainActivity extends AppCompatActivity {
                 float accelerometr_y = intent.getFloatExtra("accelerometr_y",0);
                 float accelerometr_z = intent.getFloatExtra("accelerometr_z",0);
 
-                float accelerometer_linear_x = intent.getFloatExtra("accelerometer_linear_x",0);
-                float accelerometer_linear_y = intent.getFloatExtra("accelerometer_linear_y",0);
-                float accelerometer_linear_z = intent.getFloatExtra("accelerometer_linear_z",0);
-
-                updateUIWithAccelerometerData(accelerometr_x, accelerometr_y, accelerometr_z, accelerometer_linear_x, accelerometer_linear_y, accelerometer_linear_z);
+                updateUIWithAccelerometerData(accelerometr_x, accelerometr_y, accelerometr_z);
             }
         }
     }
-
 
     private void updateUIWithGPSData(double latitude, double longitude, float speed) {
         runOnUiThread(new Runnable() {
             @Override
             public void run() {
-                gpsTextView.setText("Latitude: " + latitude + ", Longitude: " + longitude);
-                speedTextView.setText("Speed: " + speed);
+                gpsTextView.setText("GPS\n=>Latitude: " + latitude + "\n=>Longitude: " + longitude
+                +"\n=>Speed: " + speed);
+
 
                 // Other UI updates
                 ///////////////////////////////////
@@ -254,17 +263,14 @@ public class MainActivity extends AppCompatActivity {
         });
     }
 
-    private void updateUIWithAccelerometerData(float accelerometr_x, float accelerometr_y, float accelerometr_z,
-                                               float accelerometer_linear_x, float accelerometer_linear_y, float accelerometer_linear_z) {
+    private void updateUIWithAccelerometerData(float accelerometr_x, float accelerometr_y, float accelerometr_z) {
         runOnUiThread(new Runnable() {
             @Override
             public void run() {
-                accelerometerTextView.setText("X: " + accelerometr_x + ", Y: " + accelerometr_y + ", Z: " + accelerometr_z);
-                accelerometerLinearTextView.setText("X_l: " + accelerometer_linear_x + ", Y_l: " + accelerometer_linear_y + ", Z_l: " + accelerometer_linear_z);
+                accelerometerTextView.setText("Accelerometer\n=>X: " + accelerometr_x + "\n=>Y: " + accelerometr_y + "\n=>Z: " + accelerometr_z);
             }
         });
     }
-
 
 
     @Override
@@ -272,37 +278,27 @@ public class MainActivity extends AppCompatActivity {
         super.onResume();
         Log.d("systeminfo", "onResume");
 
-      /*  if (!isGpsEnabled()) {
-            showGpsReminderNotification();
-        }
-
         // Регистрация приемника широковещательных сообщений
         receiver = new MyBroadcastReceiver(new Handler()); // Create the receiver
         registerReceiver(receiver, new IntentFilter("gps_data_updated")); // Register receiver
         registerReceiver(receiver, new IntentFilter("accelerometr_data_updated")); // Register receiver
 
-        mapView.onResume();*/
+        mapView.onResume();
     }
 
     @Override
     protected void onPause() {
-
         super.onPause();
         Log.d("systeminfo", "onPause");
-        //unregisterReceiver(receiver);
+        unregisterReceiver(receiver);
 
-       // mapView.onPause();
+        mapView.onPause();
     }
 
     @Override
     protected void onDestroy() {
         super.onDestroy();
         Log.d("systeminfo", "onDestroy");
-        // Остановка службы
-        //stopService(new Intent(this, MyService.class));
-
-        // Отмена регистрации приемника при уничтожении активности
-        //unregisterReceiver(receiver);
+        unregisterReceiver(receiver);
     }
-
 }

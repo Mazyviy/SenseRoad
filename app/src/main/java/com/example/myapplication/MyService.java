@@ -11,6 +11,7 @@ import android.app.TaskStackBuilder;
 import android.content.Context;
 import android.content.Intent;
 import android.content.pm.PackageManager;
+import android.graphics.Color;
 import android.hardware.Sensor;
 import android.hardware.SensorEvent;
 import android.hardware.SensorEventListener;
@@ -64,35 +65,19 @@ public class MyService extends Service implements SensorEventListener, LocationL
     private LocationManager locationManager;
     private Sensor accelerometer;
 
-    private PowerManager.WakeLock mWakeLock;
-
-    private String SYSTEM_LOG = "SYSTEM_LOG";
-
     private float accelerometr_x, accelerometr_y, accelerometr_z;
-    private float accelerometer_linear_x, accelerometer_linear_y, accelerometer_linear_z;
-
     private double latitude, longitude;
     private float speed;
 
-    public static int count;
-    public static String count_str;
     private String accelerometerData, gpsData;
-
-    NotificationManager nm;
 
     private boolean isInternetConnected;
     private boolean isServerConnected;
 
-
-    private static final int REQUEST_PERMISSIONS_CODE = 1;
     private static final long GPS_UPDATE_INTERVAL = 1000; // в миллисекундах
     private static final long SEND_OR_SAVE_INTERVAL = 1000*1*15; // в миллисекундах
 
-    private static final int NOTIFICATION_ID = 1;
-    private static final String NOTIFICATION_CHANNEL_ID = "SensRoadChannelId";
-
-    private NotificationManager notificationManager;
-
+    private String URL = "http://89.179.33.18:27011";
     private CopyOnWriteArrayList<String> dataArrayList;
 
     private static final String EMAIL_PREF = "email_pref";
@@ -101,14 +86,9 @@ public class MyService extends Service implements SensorEventListener, LocationL
     private boolean isEmailSet;
     private String ID_USER;
 
-
     private Handler handler = new Handler();
-
     private ExecutorService pool = Executors.newSingleThreadExecutor();
 
-    private Sensor accelerometer_linear;
-
-    private Context mainActivityContext;
     public void onCreate() {
         super.onCreate();
         Log.d("LOG_TAG", "create_service");
@@ -116,18 +96,14 @@ public class MyService extends Service implements SensorEventListener, LocationL
         // Инициализация датчиков
         sensorManager = (SensorManager) getSystemService(Context.SENSOR_SERVICE);
         accelerometer = sensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER);
-        accelerometer_linear = sensorManager.getDefaultSensor(Sensor.TYPE_LINEAR_ACCELERATION);
         locationManager = (LocationManager) getSystemService(Context.LOCATION_SERVICE);
-        //nm = (NotificationManager) getSystemService(NOTIFICATION_SERVICE);
 
         dataArrayList = new CopyOnWriteArrayList<>();
     }
 
     public int onStartCommand(Intent intent, int flag, int startId) {
-
         // Регистрация слушателей датчиков
         sensorManager.registerListener((SensorEventListener) this, accelerometer, SensorManager.SENSOR_DELAY_NORMAL);
-        sensorManager.registerListener((SensorEventListener) this, accelerometer_linear, SensorManager.SENSOR_DELAY_NORMAL);
         if (ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED && ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_COARSE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
         }
         locationManager.requestLocationUpdates(LocationManager.GPS_PROVIDER, GPS_UPDATE_INTERVAL, 0, (LocationListener) this);
@@ -157,10 +133,6 @@ public class MyService extends Service implements SensorEventListener, LocationL
         return super.onStartCommand(intent, flag, startId);
     }
 
-
-
-
-
     private Runnable runnable = new Runnable() {
         @Override
         public void run() {
@@ -168,10 +140,6 @@ public class MyService extends Service implements SensorEventListener, LocationL
             handler.postDelayed(this, SEND_OR_SAVE_INTERVAL); // Запуск задачи через 3 минуты снова
         }
     };
-
-
-
-
 
     public void onDestroy() {
         super.onDestroy();
@@ -196,20 +164,14 @@ public class MyService extends Service implements SensorEventListener, LocationL
             accelerometr_y = event.values[1];
             accelerometr_z = event.values[2];
             accelerometerData = accelerometr_x + "; " + accelerometr_y + "; " + accelerometr_z;
-        } else if (event.sensor.getType() == Sensor.TYPE_LINEAR_ACCELERATION) {
-            accelerometer_linear_x = event.values[0];
-            accelerometer_linear_y = event.values[1];
-            accelerometer_linear_z = event.values[2];
         }
 
         addDataToLists();
-
         sendAccelerometerBroadcast();
     }
 
     @Override
     public void onAccuracyChanged(Sensor sensor, int i) {
-
     }
 
     @Override
@@ -253,13 +215,8 @@ public class MyService extends Service implements SensorEventListener, LocationL
         broadcastIntent.putExtra("accelerometr_y", accelerometr_y);
         broadcastIntent.putExtra("accelerometr_z", accelerometr_z);
 
-        broadcastIntent.putExtra("accelerometer_linear_x", accelerometer_linear_x);
-        broadcastIntent.putExtra("accelerometer_linear_y", accelerometer_linear_y);
-        broadcastIntent.putExtra("accelerometer_linear_z", accelerometer_linear_z);
-
         sendBroadcast(broadcastIntent);
     }
-
 
 
     private void checkInternetConnection() {
@@ -278,7 +235,7 @@ public class MyService extends Service implements SensorEventListener, LocationL
             @Override
             public void run() {
                 try {
-                    URL serverUrl = new URL(String.valueOf(R.string.server_address));
+                    URL serverUrl = new URL(URL);
                     HttpURLConnection connection = (HttpURLConnection) serverUrl.openConnection();
                     connection.setRequestMethod("GET");
                     connection.connect();
@@ -390,7 +347,7 @@ public class MyService extends Service implements SensorEventListener, LocationL
 
     private void sendSensorDataToServer(String data) {
         try {
-            URL serverUrl = new URL(String.valueOf(R.string.server_address));
+            URL serverUrl = new URL(URL);
             HttpURLConnection connection = (HttpURLConnection) serverUrl.openConnection();
             connection.setRequestMethod("POST");
             connection.setRequestProperty("Content-Type", "application/json");
@@ -419,6 +376,4 @@ public class MyService extends Service implements SensorEventListener, LocationL
             throw new RuntimeException(e);
         }
     }
-
-
 }
