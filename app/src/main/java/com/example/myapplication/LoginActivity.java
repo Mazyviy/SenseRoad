@@ -1,7 +1,6 @@
 package com.example.myapplication;
 
 import androidx.appcompat.app.AppCompatActivity;
-
 import android.app.ProgressDialog;
 import android.content.Context;
 import android.content.Intent;
@@ -11,28 +10,23 @@ import android.net.NetworkInfo;
 import android.os.AsyncTask;
 import android.os.Bundle;
 import android.text.TextUtils;
-import android.util.Log;
 import android.view.View;
 import android.widget.Button;
 import android.widget.EditText;
 import android.widget.Toast;
-
 import org.json.JSONException;
 import org.json.JSONObject;
-
 import java.io.BufferedReader;
 import java.io.IOException;
-import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.io.OutputStream;
-import java.io.PrintWriter;
 import java.net.HttpURLConnection;
-import java.net.Socket;
 import java.net.URL;
-
-import javax.net.ssl.HttpsURLConnection;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
 public class LoginActivity extends AppCompatActivity implements View.OnClickListener {
+
     private String URL = "http://89.179.33.18:27011";
     private boolean isInternetConnected;
     private boolean isServerConnected;
@@ -44,6 +38,7 @@ public class LoginActivity extends AppCompatActivity implements View.OnClickList
     private String ID_USER;
     private EditText email;
 
+    private ExecutorService pool = Executors.newSingleThreadExecutor();
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -54,12 +49,6 @@ public class LoginActivity extends AppCompatActivity implements View.OnClickList
         Button btnSend = (Button) findViewById(R.id.buttonSendEmail);
         btnSend.setOnClickListener((View.OnClickListener) this);
 
-        InternetConnection r1 = new InternetConnection();
-        ServerConnection r2 = new ServerConnection();
-        Thread t1 = new Thread(r1);
-        Thread t2 = new Thread(r2);
-        t1.start();
-        t2.start();
 
         sharedPreferences = getSharedPreferences(EMAIL_PREF, MODE_PRIVATE);
         String userEmail = sharedPreferences.getString(EMAIL_KEY, null);
@@ -73,16 +62,10 @@ public class LoginActivity extends AppCompatActivity implements View.OnClickList
     }
 
     public void onClick(View v) {
-
         String emailText = String.valueOf(email.getText());
 
-        InternetConnection r1 = new InternetConnection();
-        ServerConnection r2 = new ServerConnection();
-        Thread t1 = new Thread(r1);
-        Thread t2 = new Thread(r2);
-        t1.start();
-        t2.start();
-
+        checkInternetConnection();
+        checkServerConnection();
 
         if (isInternetConnected==false) {
             Toast.makeText(LoginActivity.this, "Нет доступа к интернету! Для регистрации требуется интернет", Toast.LENGTH_SHORT).show();
@@ -95,31 +78,34 @@ public class LoginActivity extends AppCompatActivity implements View.OnClickList
         }
     }
 
-    class InternetConnection implements Runnable {
-        @Override
-        public void run() {
-            ConnectivityManager connectivityManager = (ConnectivityManager) getSystemService(Context.CONNECTIVITY_SERVICE);
-            NetworkInfo networkInfo = connectivityManager.getActiveNetworkInfo();
-            isInternetConnected = networkInfo != null && networkInfo.isConnected();
-        }
+    private void checkInternetConnection() {
+        pool.submit(new Runnable() {
+            @Override
+            public void run() {
+                ConnectivityManager connectivityManager = (ConnectivityManager) getSystemService(Context.CONNECTIVITY_SERVICE);
+                NetworkInfo networkInfo = connectivityManager.getActiveNetworkInfo();
+                isInternetConnected = networkInfo != null && networkInfo.isConnected();
+            }
+        });
     }
 
+    public void checkServerConnection() {
+        pool.submit(new Runnable() {
+            @Override
+            public void run() {
+                try {
+                    URL serverUrl = new URL(URL);
+                    HttpURLConnection connection = (HttpURLConnection) serverUrl.openConnection();
+                    connection.setRequestMethod("GET");
+                    connection.connect();
 
-    class ServerConnection implements Runnable {
-        @Override
-        public void run() {
-            try {
-                URL serverUrl = new URL(URL);
-                HttpURLConnection connection = (HttpURLConnection) serverUrl.openConnection();
-                connection.setRequestMethod("GET");
-                connection.connect();
-
-                int responseCode = connection.getResponseCode();
-                isServerConnected = (responseCode == HttpURLConnection.HTTP_FORBIDDEN);
-            } catch (IOException e) {
-                isServerConnected = false;
+                    int responseCode = connection.getResponseCode();
+                    isServerConnected = (responseCode == HttpURLConnection.HTTP_FORBIDDEN);
+                } catch (IOException e) {
+                    isServerConnected = false;
+                }
             }
-        }
+        });
     }
 
     private class CheckEmailTask extends AsyncTask<String, Void, String> {
@@ -163,9 +149,7 @@ public class LoginActivity extends AppCompatActivity implements View.OnClickList
                     JSONObject jsonResponse = new JSONObject(response.toString());
                     return jsonResponse.getString("id_user");
                 }
-
             } catch (IOException | JSONException e) {
-                // Обработка ошибок
                 return null;
             }
         }
@@ -175,7 +159,7 @@ public class LoginActivity extends AppCompatActivity implements View.OnClickList
                 Toast.makeText(LoginActivity.this, "Email зарегистрирован", Toast.LENGTH_SHORT).show();
 
                 saveEmail(this.email, result);
-                isEmailSet = true; // Обновляем значение isEmailSet
+                isEmailSet = true;
 
                 Intent intent = new Intent(LoginActivity.this, MainActivity.class);
                 startActivity(intent);

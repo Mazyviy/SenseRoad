@@ -33,18 +33,15 @@
         android:theme="@style/Theme.MyApplication"
         tools:targetApi="31">
 
+        <activity android:name=".YourActivity"
+            android:theme="@style/Theme.AppCompat.Light">
+            ...
+        </activity>
+
         <service
             android:name=".MyService"
             android:enabled="true"
             android:process=":myservice" />
-
-        <receiver android:name=".MyBroadcastReceiver"
-            android:exported="true">
-            <intent-filter>
-                <action android:name="android.intent.action.BOOT_COMPLETED" />
-                <action android:name="android.intent.action.PACKAGE_RESTARTED" />
-            </intent-filter>
-        </receiver>
 
         <activity
             android:name=".MainActivity"

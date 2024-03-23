@@ -2,59 +2,27 @@ package com.example.myapplication;
 
 import androidx.activity.result.ActivityResultCallback;
 import androidx.activity.result.ActivityResultLauncher;
-import androidx.activity.result.contract.ActivityResultContract;
 import androidx.activity.result.contract.ActivityResultContracts;
-import androidx.annotation.NonNull;
 import androidx.appcompat.app.AlertDialog;
 import androidx.appcompat.app.AppCompatActivity;
-import androidx.core.app.ActivityCompat;
-
 import android.annotation.SuppressLint;
 import android.app.ActivityManager;
-import android.app.Instrumentation;
-import android.app.PendingIntent;
 import android.content.BroadcastReceiver;
 import android.content.DialogInterface;
 import android.content.Intent;
 import android.content.IntentFilter;
-import android.content.SharedPreferences;
-import android.net.ConnectivityManager;
-import android.net.NetworkInfo;
-import android.os.AsyncTask;
 import android.os.Bundle;
 import android.Manifest;
 import android.content.Context;
 import android.content.pm.PackageManager;
-import android.hardware.Sensor;
-import android.hardware.SensorEvent;
-import android.hardware.SensorEventListener;
-import android.hardware.SensorManager;
-import android.location.Location;
-import android.location.LocationListener;
 import android.location.LocationManager;
-import android.os.Bundle;
-import android.os.Environment;
 import android.os.Handler;
-import android.os.Looper;
-import androidx.core.app.ActivityCompat;
-import androidx.appcompat.app.AppCompatActivity;
 import androidx.core.content.ContextCompat;
-import androidx.lifecycle.Observer;
-
-import android.os.Parcelable;
-import android.os.PowerManager;
 import android.provider.Settings;
-import android.text.TextUtils;
 import android.util.Log;
 import android.view.View;
-import android.view.WindowManager;
 import android.widget.Button;
-import android.widget.EditText;
 import android.widget.TextView;
-import android.widget.Toast;
-
-import org.json.JSONException;
-import org.json.JSONObject;
 import org.osmdroid.config.Configuration;
 import org.osmdroid.tileprovider.tilesource.TileSourceFactory;
 import org.osmdroid.util.GeoPoint;
@@ -62,43 +30,20 @@ import org.osmdroid.views.MapController;
 import org.osmdroid.views.MapView;
 import org.osmdroid.views.overlay.Marker;
 import org.osmdroid.views.overlay.ScaleBarOverlay;
-
-import java.io.BufferedReader;
-import java.io.BufferedWriter;
-import java.io.File;
-import java.io.FileReader;
-import java.io.FileWriter;
-import java.io.IOException;
-import java.io.InputStreamReader;
-import java.io.OutputStream;
-import java.io.OutputStreamWriter;
-import java.io.Serializable;
-import java.net.HttpURLConnection;
-import java.net.URL;
-import java.text.SimpleDateFormat;
 import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.Date;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
-import java.util.concurrent.CopyOnWriteArrayList;
 
 public class MainActivity extends AppCompatActivity {
 
     private TextView accelerometerTextView;
     private TextView gpsTextView;
     private MapView mapView;
-    private MapController mapController;
-
-
     private Marker currentMarker;
-
 
     ActivityResultLauncher<String[]> mPermissionResultLauncher;
     private boolean isWritePermissionGranted = false;
     private boolean isLocationPermissionGranted = false;
-
     private boolean isServiceRunning = false;
     private MyBroadcastReceiver receiver;
 
@@ -112,16 +57,8 @@ public class MainActivity extends AppCompatActivity {
         gpsTextView = findViewById(R.id.gpsTextView);
         accelerometerTextView = findViewById(R.id.accelerometerTextView);
 
-        final Button btnToggle = findViewById(R.id.button_toggle);
-        if (isServiceRunning){
-            btnToggle.setText("Остановить службу");
-        }
-        else {
-            btnToggle.setText("Запустить службу");
-        }
-
         isServiceRunning = foregroundServiceRunning();
-
+        final Button btnToggle = findViewById(R.id.button_toggle);
 
         btnToggle.setOnClickListener(new View.OnClickListener() {
             @Override
@@ -131,9 +68,12 @@ public class MainActivity extends AppCompatActivity {
                     isServiceRunning = false;
                     btnToggle.setText("Запустить службу");
                 } else {
-                    startForegroundService(new Intent(MainActivity.this, MyService.class));
-                    isServiceRunning = true;
-                    btnToggle.setText("Остановить службу");
+                    if (!checkLocationEnabled()) showLocationAlert();
+                    else {
+                        startForegroundService(new Intent(MainActivity.this, MyService.class));
+                        isServiceRunning = true;
+                        btnToggle.setText("Остановить службу");
+                    }
                 }
             }
         });
@@ -141,7 +81,7 @@ public class MainActivity extends AppCompatActivity {
         // Регистрация приемника широковещательных сообщений
         receiver = new MyBroadcastReceiver(new Handler()); // Create the receiver
         registerReceiver(receiver, new IntentFilter("gps_data_updated")); // Register receiver
-        registerReceiver(receiver, new IntentFilter("accelerometr_data_updated")); // Register receiver
+        registerReceiver(receiver, new IntentFilter("accelerometer_data_updated")); // Register receiver
 
         // Инициализация карты
         Configuration.getInstance().setUserAgentValue(getPackageName());
@@ -151,6 +91,8 @@ public class MainActivity extends AppCompatActivity {
         mapView.setMultiTouchControls(true);
         ScaleBarOverlay myScaleBarOverlay = new ScaleBarOverlay(mapView);
         mapView.getOverlays().add(myScaleBarOverlay);
+        MapController mapController = (MapController) mapView.getController();
+        mapController.setZoom(13);
 
         ActivityResultCallback<Map<String, Boolean>> callback = new ActivityResultCallback<Map<String, Boolean>>() {
             @Override
@@ -164,7 +106,8 @@ public class MainActivity extends AppCompatActivity {
                 }
 
                 if (isWritePermissionGranted && isLocationPermissionGranted) {
-                    startForegroundService(new Intent(MainActivity.this, MyService.class));
+                    //startForegroundService(new Intent(MainActivity.this, MyService.class));
+                    btnToggle.performClick();
                 } else {
                     requestPermission();
                 }
@@ -174,7 +117,32 @@ public class MainActivity extends AppCompatActivity {
         mPermissionResultLauncher = registerForActivityResult(new ActivityResultContracts.RequestMultiplePermissions(), callback);
         requestPermission();
 
+        if (!checkLocationEnabled()) showLocationAlert();
 
+        btnToggle.performClick();
+
+    }
+
+    private boolean checkLocationEnabled() {
+        LocationManager locationManager = (LocationManager) getSystemService(LOCATION_SERVICE);
+        if (!locationManager.isProviderEnabled(LocationManager.GPS_PROVIDER)) {
+            return false;
+        }
+        else return true;
+    }
+
+    private void showLocationAlert() {
+
+        AlertDialog.Builder dialog = new AlertDialog.Builder(this);
+        dialog.setMessage("Местоположение отключено. Хотите включить его?");
+        dialog.setPositiveButton("Да", (dialogInterface, i) -> {
+            Intent intent = new Intent(Settings.ACTION_LOCATION_SOURCE_SETTINGS);
+            startActivity(intent);
+        });
+        dialog.setNegativeButton("Отмена", (dialogInterface, i) -> {
+            finish();
+        });
+        dialog.show();
     }
 
     public  boolean foregroundServiceRunning() {
@@ -187,6 +155,8 @@ public class MainActivity extends AppCompatActivity {
         }
         return false;
     }
+
+
 
     private void requestPermission(){
         isWritePermissionGranted = ContextCompat.checkSelfPermission(
@@ -223,31 +193,28 @@ public class MainActivity extends AppCompatActivity {
         @Override
         public void onReceive(Context context, Intent intent) {
             if (intent.getAction().equals("gps_data_updated")) {
-                float latitude = intent.getFloatExtra("latitude",0);
-                float longitude = intent.getFloatExtra("accelerometer_value",0);
-                float speed = intent.getFloatExtra("speed", 0);
+                double latitude = intent.getDoubleExtra("latitude",0);
+                double longitude = intent.getDoubleExtra("longitude",0);
+                double speed = intent.getDoubleExtra("speed", 0);
                 updateUIWithGPSData(latitude, longitude, speed);
-            } else if (intent.getAction().equals("accelerometr_data_updated")) {
 
-                float accelerometr_x = intent.getFloatExtra("accelerometr_x",0);
-                float accelerometr_y = intent.getFloatExtra("accelerometr_y",0);
-                float accelerometr_z = intent.getFloatExtra("accelerometr_z",0);
-
-                updateUIWithAccelerometerData(accelerometr_x, accelerometr_y, accelerometr_z);
+            } else if (intent.getAction().equals("accelerometer_data_updated")) {
+                float accelerometer_x = intent.getFloatExtra("accelerometer_x",0);
+                float accelerometer_y = intent.getFloatExtra("accelerometer_y",0);
+                float accelerometer_z = intent.getFloatExtra("accelerometer_z",0);
+                updateUIWithAccelerometerData(accelerometer_x, accelerometer_y, accelerometer_z);
             }
         }
     }
 
-    private void updateUIWithGPSData(double latitude, double longitude, float speed) {
+    private void updateUIWithGPSData(double latitude, double longitude, double speed) {
         runOnUiThread(new Runnable() {
             @Override
             public void run() {
-                gpsTextView.setText("GPS\n=>Latitude: " + latitude + "\n=>Longitude: " + longitude
+                gpsTextView.setText("GPS\n=>Latitude: " + latitude +
+                        "\n=>Longitude: " + longitude
                 +"\n=>Speed: " + speed);
 
-
-                // Other UI updates
-                ///////////////////////////////////
                 // Если маркер еще не создан, создаем новый маркер
                 if (currentMarker == null) {
                     currentMarker = new Marker(mapView);
@@ -258,16 +225,17 @@ public class MainActivity extends AppCompatActivity {
                 currentMarker.setPosition(new GeoPoint(latitude, longitude));
                 mapView.getController().setCenter(new GeoPoint(latitude, longitude));
                 mapView.invalidate(); // Обновление карты
-                /////////////////////////////////
             }
         });
     }
 
-    private void updateUIWithAccelerometerData(float accelerometr_x, float accelerometr_y, float accelerometr_z) {
+    private void updateUIWithAccelerometerData(float accelerometer_x, float accelerometer_y, float accelerometer_z) {
         runOnUiThread(new Runnable() {
             @Override
             public void run() {
-                accelerometerTextView.setText("Accelerometer\n=>X: " + accelerometr_x + "\n=>Y: " + accelerometr_y + "\n=>Z: " + accelerometr_z);
+                accelerometerTextView.setText("Accelerometer\n=>X: " + accelerometer_x +
+                        "\n=>Y: " + accelerometer_y +
+                        "\n=>Z: " + accelerometer_z);
             }
         });
     }
@@ -281,24 +249,29 @@ public class MainActivity extends AppCompatActivity {
         // Регистрация приемника широковещательных сообщений
         receiver = new MyBroadcastReceiver(new Handler()); // Create the receiver
         registerReceiver(receiver, new IntentFilter("gps_data_updated")); // Register receiver
-        registerReceiver(receiver, new IntentFilter("accelerometr_data_updated")); // Register receiver
-
+        registerReceiver(receiver, new IntentFilter("accelerometer_data_updated")); // Register receiver
         mapView.onResume();
+
+        if (!checkLocationEnabled()) showLocationAlert();
+
     }
 
     @Override
     protected void onPause() {
         super.onPause();
         Log.d("systeminfo", "onPause");
-        unregisterReceiver(receiver);
 
+        unregisterReceiver(receiver);
         mapView.onPause();
+
+        if (!checkLocationEnabled()) showLocationAlert();
     }
 
     @Override
     protected void onDestroy() {
         super.onDestroy();
         Log.d("systeminfo", "onDestroy");
+
         unregisterReceiver(receiver);
     }
 }
