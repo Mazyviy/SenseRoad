@@ -7,7 +7,9 @@ import android.app.NotificationManager;
 import android.app.Service;
 import android.content.Context;
 import android.content.Intent;
+import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
+import android.content.pm.ServiceInfo;
 import android.hardware.Sensor;
 import android.hardware.SensorEvent;
 import android.hardware.SensorEventListener;
@@ -17,10 +19,13 @@ import android.location.LocationListener;
 import android.location.LocationManager;
 import android.net.ConnectivityManager;
 import android.net.NetworkInfo;
+import android.os.Build;
 import android.os.Bundle;
 import android.os.Environment;
 import android.os.Handler;
 import android.os.IBinder;
+import android.os.PowerManager;
+import android.text.TextUtils;
 import android.util.Log;
 import android.widget.Toast;
 import androidx.core.app.ActivityCompat;
@@ -46,11 +51,12 @@ import java.util.concurrent.Executors;
 public class MyService extends Service implements SensorEventListener, LocationListener {
     private SensorManager sensorManager;
     private LocationManager locationManager;
-    private Sensor accelerometer;
+    private Sensor accelerometer, gravity;
 
-    private float accelerometr_x, accelerometr_y, accelerometr_z;
-    private double latitude, longitude;
-    private double speed;
+    private float[] accelerometerValue = new float[3];
+    private float[] gravityValue = new float[3];
+    private float[] linearAccelerometerValue = new float[3];
+    private double latitude, longitude, speed;
 
     private String accelerometerData, gpsData;
 
@@ -58,19 +64,23 @@ public class MyService extends Service implements SensorEventListener, LocationL
     private boolean isServerConnected;
 
     private static final long GPS_UPDATE_INTERVAL = 1000; // в миллисекундах
-    private static final long SEND_OR_SAVE_INTERVAL = 1000*1*15; // в миллисекундах
+    private static final long SEND_OR_SAVE_INTERVAL = 1000*60*3; // в миллисекундах
 
     private String URL = "http://89.179.33.18:27011";
     private CopyOnWriteArrayList<String> dataArrayList;
 
+    private SharedPreferences sharedPreferences;
     private static final String EMAIL_PREF = "email_pref";
-    private static final String EMAIL_KEY = "email_key";
     private static final String ID_KEY = "id_key";
-    private boolean isEmailSet;
+    private boolean isIdSet;
     private String ID_USER;
 
     private Handler handler = new Handler();
     private ExecutorService pool = Executors.newSingleThreadExecutor();
+
+    private static final String TAG = MyService.class.getSimpleName();
+    private PowerManager.WakeLock wakeLock;
+
 
     public void onCreate() {
         super.onCreate();
@@ -79,24 +89,36 @@ public class MyService extends Service implements SensorEventListener, LocationL
         // Инициализация датчиков
         sensorManager = (SensorManager) getSystemService(Context.SENSOR_SERVICE);
         accelerometer = sensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER);
+        /////////
+        gravity = sensorManager.getDefaultSensor(Sensor.TYPE_GRAVITY);
+        ////////////
         locationManager = (LocationManager) getSystemService(Context.LOCATION_SERVICE);
 
         dataArrayList = new CopyOnWriteArrayList<>();
+        // get a wakelock from the power manager
+        final PowerManager powerManager = (PowerManager) getSystemService(Context.POWER_SERVICE);
+        wakeLock = powerManager.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, TAG);
+
+        sharedPreferences = getSharedPreferences(EMAIL_PREF, MODE_PRIVATE);
+        String idUser = sharedPreferences.getString(ID_KEY, null);
+        isIdSet = !TextUtils.isEmpty(idUser);
+        if (isIdSet) {
+            ID_USER = idUser;
+        }
     }
 
     public int onStartCommand(Intent intent, int flag, int startId) {
         // Регистрация слушателей датчиков
         sensorManager.registerListener((SensorEventListener) this, accelerometer, SensorManager.SENSOR_DELAY_NORMAL);
+        sensorManager.registerListener((SensorEventListener) this,gravity,SensorManager.SENSOR_DELAY_NORMAL);
         if (ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED && ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_COARSE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
         }
         locationManager.requestLocationUpdates(LocationManager.GPS_PROVIDER, GPS_UPDATE_INTERVAL, 0, (LocationListener) this);
-
 
 //////////////////////
         // Проверка подключения
         checkInternetConnection();
         checkServerConnection();
-
         handler.postDelayed(runnable, SEND_OR_SAVE_INTERVAL);
 //////////////////
 
@@ -108,7 +130,11 @@ public class MyService extends Service implements SensorEventListener, LocationL
                 .setContentTitle("Run SensRoad")
                 .setContentText("Запущена служба SensRoad");
 
+
         startForeground(1001, notification.build());
+
+        // acquire wakelock
+        wakeLock.acquire();
 
         return super.onStartCommand(intent, flag, startId);
     }
@@ -117,7 +143,6 @@ public class MyService extends Service implements SensorEventListener, LocationL
         LocationManager locationManager = (LocationManager) getSystemService(LOCATION_SERVICE);
         if (!locationManager.isProviderEnabled(LocationManager.GPS_PROVIDER)) {
             Toast.makeText(getApplicationContext(), "Служба локации выключена, приложение будет закрыто", Toast.LENGTH_SHORT).show();
-
             stopSelf();
         }
     }
@@ -140,6 +165,11 @@ public class MyService extends Service implements SensorEventListener, LocationL
         handler.removeCallbacks(runnable);
         stopForeground(true);
         stopSelf();
+
+        //release wakelock if it is held
+        if (null != wakeLock && wakeLock.isHeld()) {
+            wakeLock.release();
+        }
     }
 
     @Override
@@ -151,10 +181,32 @@ public class MyService extends Service implements SensorEventListener, LocationL
     public void onSensorChanged(SensorEvent event) {
         // Обработка изменений значений акселерометра
         if (event.sensor.getType() == Sensor.TYPE_ACCELEROMETER) {
-            accelerometr_x = event.values[0];
-            accelerometr_y = event.values[1];
-            accelerometr_z = event.values[2];
-            accelerometerData = accelerometr_x + "; " + accelerometr_y + "; " + accelerometr_z;
+            accelerometerValue[0] = event.values[0];
+            accelerometerValue[1] = event.values[1];
+            accelerometerValue[2] = event.values[2];
+
+            float ALPHA = 0.8f;
+            // Фильтрация данных
+            gravityValue[0] = ALPHA * gravityValue[0] + (1 - ALPHA) * accelerometerValue[0];
+            gravityValue[1] = ALPHA * gravityValue[1] + (1 - ALPHA) * accelerometerValue[1];
+            gravityValue[2] = ALPHA * gravityValue[2] + (1 - ALPHA) * accelerometerValue[2];
+
+            linearAccelerometerValue[0] = accelerometerValue[0] - gravityValue[0];
+            linearAccelerometerValue[1] = accelerometerValue[1] - gravityValue[1];
+            linearAccelerometerValue[2] = accelerometerValue[2] - gravityValue[2];
+
+            accelerometerData = accelerometerValue[0] + "; " +
+                                accelerometerValue[1] + "; " +
+                                accelerometerValue[2] + "; " +
+                                linearAccelerometerValue[0] + "; " +
+                                linearAccelerometerValue[1]+ "; " +
+                                linearAccelerometerValue[2];
+        }
+
+        if (event.sensor.getType() == Sensor.TYPE_GRAVITY) {
+            gravityValue[0] = event.values[0];
+            gravityValue[1] = event.values[1];
+            gravityValue[2] = event.values[2];
         }
 
         addDataToLists();
@@ -191,7 +243,7 @@ public class MyService extends Service implements SensorEventListener, LocationL
     }
 
     private void sendGPSToBroadcast() {
-        Intent broadcastIntent = new Intent("gps_data_updated");
+        Intent broadcastIntent = new Intent("gpsDataUpdated");
         broadcastIntent.putExtra("latitude", latitude);
         broadcastIntent.putExtra("longitude", longitude);
         broadcastIntent.putExtra("speed", speed);
@@ -201,10 +253,10 @@ public class MyService extends Service implements SensorEventListener, LocationL
 
     private void sendAccelerometerBroadcast() {
         // Отправка широковещательного сообщения с целочисленным значением
-        Intent broadcastIntent = new Intent("accelerometer_data_updated");
-        broadcastIntent.putExtra("accelerometer_x", accelerometr_x);
-        broadcastIntent.putExtra("accelerometer_y", accelerometr_y);
-        broadcastIntent.putExtra("accelerometer_z", accelerometr_z);
+        Intent broadcastIntent = new Intent("accelerometerDataUpdated");
+        broadcastIntent.putExtra("accelerometerValue", accelerometerValue);
+        broadcastIntent.putExtra("linearAccelerometerValue", linearAccelerometerValue);
+        broadcastIntent.putExtra("gravityValue", gravityValue);
 
         sendBroadcast(broadcastIntent);
     }
@@ -241,9 +293,9 @@ public class MyService extends Service implements SensorEventListener, LocationL
     }
 
     private void addDataToLists() {
-        if (accelerometerData != null && gpsData != null){// && speed > 1.5) {
+        if (accelerometerData != null && gpsData != null && speed > 1.5) {
             dataArrayList.add(new SimpleDateFormat("yyyy-MM-dd HH:mm:ss.SSS", Locale.US).format(System.currentTimeMillis())
-                    + "; " + gpsData + "; " + accelerometerData + "\n");
+                    + "; " + gpsData + "; " + accelerometerData +"\n");
         }
     }
 

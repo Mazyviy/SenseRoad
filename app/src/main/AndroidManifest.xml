@@ -21,8 +21,6 @@
 
     <application
         android:usesCleartextTraffic="true"
-
-
         android:allowBackup="true"
         android:dataExtractionRules="@xml/data_extraction_rules"
         android:fullBackupContent="@xml/backup_rules"
@@ -31,16 +29,13 @@
         android:roundIcon="@mipmap/ic_launcher_round"
         android:supportsRtl="true"
         android:theme="@style/Theme.MyApplication"
-        tools:targetApi="31">
-
-        <activity android:name=".YourActivity"
-            android:theme="@style/Theme.AppCompat.Light">
-            ...
-        </activity>
+        tools:targetApi="31"
+        android:screenOrientation="portrait">
 
         <service
             android:name=".MyService"
             android:enabled="true"
+            android:foregroundServiceType="location"
             android:process=":myservice" />
 
         <activity
@@ -49,10 +44,10 @@
             android:configChanges="orientation|keyboardHidden|screenSize"
             android:exported="true" />
         <activity
-            android:screenOrientation="portrait"
             android:name=".LoginActivity"
             android:exported="true"
-            android:noHistory="true">
+            android:noHistory="true"
+            android:screenOrientation="portrait">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
 

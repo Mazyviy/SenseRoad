@@ -8,9 +8,9 @@ import androidx.appcompat.app.AppCompatActivity;
 import android.annotation.SuppressLint;
 import android.app.ActivityManager;
 import android.content.BroadcastReceiver;
-import android.content.DialogInterface;
 import android.content.Intent;
 import android.content.IntentFilter;
+import android.content.pm.ActivityInfo;
 import android.os.Bundle;
 import android.Manifest;
 import android.content.Context;
@@ -30,6 +30,8 @@ import org.osmdroid.views.MapController;
 import org.osmdroid.views.MapView;
 import org.osmdroid.views.overlay.Marker;
 import org.osmdroid.views.overlay.ScaleBarOverlay;
+
+import java.text.DecimalFormat;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -47,10 +49,10 @@ public class MainActivity extends AppCompatActivity {
     private boolean isServiceRunning = false;
     private MyBroadcastReceiver receiver;
 
-    @SuppressLint("InvalidWakeLockTag")
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_PORTRAIT);
         setContentView(R.layout.activity_main);
 
         // Инициализация текстовых полей
@@ -71,6 +73,7 @@ public class MainActivity extends AppCompatActivity {
                     if (!checkLocationEnabled()) showLocationAlert();
                     else {
                         startForegroundService(new Intent(MainActivity.this, MyService.class));
+
                         isServiceRunning = true;
                         btnToggle.setText("Остановить службу");
                     }
@@ -80,8 +83,8 @@ public class MainActivity extends AppCompatActivity {
 
         // Регистрация приемника широковещательных сообщений
         receiver = new MyBroadcastReceiver(new Handler()); // Create the receiver
-        registerReceiver(receiver, new IntentFilter("gps_data_updated")); // Register receiver
-        registerReceiver(receiver, new IntentFilter("accelerometer_data_updated")); // Register receiver
+        registerReceiver(receiver, new IntentFilter("gpsDataUpdated")); // Register receiver
+        registerReceiver(receiver, new IntentFilter("accelerometerDataUpdated")); // Register receiver
 
         // Инициализация карты
         Configuration.getInstance().setUserAgentValue(getPackageName());
@@ -100,13 +103,11 @@ public class MainActivity extends AppCompatActivity {
                 if(result.get(Manifest.permission.WRITE_EXTERNAL_STORAGE) != null) {
                     isWritePermissionGranted = result.get(Manifest.permission.WRITE_EXTERNAL_STORAGE);
                 }
-
                 if(result.get(Manifest.permission.ACCESS_FINE_LOCATION) != null) {
                     isLocationPermissionGranted = result.get(Manifest.permission.ACCESS_FINE_LOCATION);
                 }
 
-                if (isWritePermissionGranted && isLocationPermissionGranted) {
-                    //startForegroundService(new Intent(MainActivity.this, MyService.class));
+                if (isWritePermissionGranted && isLocationPermissionGranted ) {
                     btnToggle.performClick();
                 } else {
                     requestPermission();
@@ -120,7 +121,6 @@ public class MainActivity extends AppCompatActivity {
         if (!checkLocationEnabled()) showLocationAlert();
 
         btnToggle.performClick();
-
     }
 
     private boolean checkLocationEnabled() {
@@ -132,7 +132,6 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void showLocationAlert() {
-
         AlertDialog.Builder dialog = new AlertDialog.Builder(this);
         dialog.setMessage("Местоположение отключено. Хотите включить его?");
         dialog.setPositiveButton("Да", (dialogInterface, i) -> {
@@ -155,8 +154,6 @@ public class MainActivity extends AppCompatActivity {
         }
         return false;
     }
-
-
 
     private void requestPermission(){
         isWritePermissionGranted = ContextCompat.checkSelfPermission(
@@ -192,17 +189,17 @@ public class MainActivity extends AppCompatActivity {
 
         @Override
         public void onReceive(Context context, Intent intent) {
-            if (intent.getAction().equals("gps_data_updated")) {
+            if (intent.getAction().equals("gpsDataUpdated")) {
                 double latitude = intent.getDoubleExtra("latitude",0);
                 double longitude = intent.getDoubleExtra("longitude",0);
                 double speed = intent.getDoubleExtra("speed", 0);
                 updateUIWithGPSData(latitude, longitude, speed);
 
-            } else if (intent.getAction().equals("accelerometer_data_updated")) {
-                float accelerometer_x = intent.getFloatExtra("accelerometer_x",0);
-                float accelerometer_y = intent.getFloatExtra("accelerometer_y",0);
-                float accelerometer_z = intent.getFloatExtra("accelerometer_z",0);
-                updateUIWithAccelerometerData(accelerometer_x, accelerometer_y, accelerometer_z);
+            } else if (intent.getAction().equals("accelerometerDataUpdated")) {
+                float[] accelerometerValue = intent.getFloatArrayExtra("accelerometerValue");
+                float[] linearAccelerometerValue = intent.getFloatArrayExtra("linearAccelerometerValue");
+                float[] gravityValue = intent.getFloatArrayExtra("gravityValue");
+                updateUIWithAccelerometerData(accelerometerValue, linearAccelerometerValue, gravityValue);
             }
         }
     }
@@ -211,6 +208,7 @@ public class MainActivity extends AppCompatActivity {
         runOnUiThread(new Runnable() {
             @Override
             public void run() {
+                Log.d("main", String.valueOf(latitude));
                 gpsTextView.setText("GPS\n=>Latitude: " + latitude +
                         "\n=>Longitude: " + longitude
                 +"\n=>Speed: " + speed);
@@ -229,17 +227,25 @@ public class MainActivity extends AppCompatActivity {
         });
     }
 
-    private void updateUIWithAccelerometerData(float accelerometer_x, float accelerometer_y, float accelerometer_z) {
+    private void updateUIWithAccelerometerData(float[] accelerometerValue, float[] linearAccelerometerValue, float[] gravityValue) {
         runOnUiThread(new Runnable() {
             @Override
             public void run() {
-                accelerometerTextView.setText("Accelerometer\n=>X: " + accelerometer_x +
-                        "\n=>Y: " + accelerometer_y +
-                        "\n=>Z: " + accelerometer_z);
+                Log.d("main", "String.valueOf(accelerometerValue[0])");
+                DecimalFormat df = new DecimalFormat("#.#####");
+                accelerometerTextView.setText("Accelerometer\n=>X: " + df.format(accelerometerValue[0]) +
+                        "\n=>Y: " + df.format(accelerometerValue[1]) +
+                        "\n=>Z: " + df.format(accelerometerValue[2])+
+                        "\n"+df.format(gravityValue[0])+
+                        "\n"+df.format(gravityValue[1])+
+                        "\n"+ df.format(gravityValue[2])+
+                        "\n=>Xl: " + df.format(linearAccelerometerValue[0]) +
+                        "\n=>Yl: " + df.format(linearAccelerometerValue[1]) +
+                        "\n=>Zl: " + df.format(linearAccelerometerValue[2])
+                );
             }
         });
     }
-
 
     @Override
     protected void onResume() {
@@ -248,12 +254,11 @@ public class MainActivity extends AppCompatActivity {
 
         // Регистрация приемника широковещательных сообщений
         receiver = new MyBroadcastReceiver(new Handler()); // Create the receiver
-        registerReceiver(receiver, new IntentFilter("gps_data_updated")); // Register receiver
-        registerReceiver(receiver, new IntentFilter("accelerometer_data_updated")); // Register receiver
+        registerReceiver(receiver, new IntentFilter("gpsDataUpdated")); // Register receiver
+        registerReceiver(receiver, new IntentFilter("accelerometerDataUpdated")); // Register receiver
         mapView.onResume();
 
         if (!checkLocationEnabled()) showLocationAlert();
-
     }
 
     @Override
