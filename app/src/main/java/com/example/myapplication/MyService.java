@@ -19,9 +19,7 @@ import android.location.LocationListener;
 import android.location.LocationManager;
 import android.net.ConnectivityManager;
 import android.net.NetworkInfo;
-import android.os.Build;
 import android.os.Bundle;
-import android.os.Environment;
 import android.os.Handler;
 import android.os.IBinder;
 import android.os.PowerManager;
@@ -29,6 +27,7 @@ import android.text.TextUtils;
 import android.util.Log;
 import android.widget.Toast;
 import androidx.core.app.ActivityCompat;
+
 import org.json.JSONException;
 import org.json.JSONObject;
 import java.io.BufferedReader;
@@ -37,7 +36,6 @@ import java.io.File;
 import java.io.FileReader;
 import java.io.FileWriter;
 import java.io.IOException;
-import java.io.InputStreamReader;
 import java.io.OutputStream;
 import java.net.HttpURLConnection;
 import java.net.URL;
@@ -50,7 +48,7 @@ import java.util.concurrent.Executors;
 
 public class MyService extends Service implements SensorEventListener, LocationListener {
     private SensorManager sensorManager;
-    private LocationManager locationManager;
+    private LocationManager locationManager=null;
     private Sensor accelerometer, gravity;
 
     private float[] accelerometerValue = new float[3];
@@ -81,11 +79,8 @@ public class MyService extends Service implements SensorEventListener, LocationL
     private static final String TAG = MyService.class.getSimpleName();
     private PowerManager.WakeLock wakeLock;
 
-
     public void onCreate() {
         super.onCreate();
-        Log.d("LOG_TAG", "create_service");
-
         // Инициализация датчиков
         sensorManager = (SensorManager) getSystemService(Context.SENSOR_SERVICE);
         accelerometer = sensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER);
@@ -114,13 +109,12 @@ public class MyService extends Service implements SensorEventListener, LocationL
         if (ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED && ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_COARSE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
         }
         locationManager.requestLocationUpdates(LocationManager.GPS_PROVIDER, GPS_UPDATE_INTERVAL, 0, (LocationListener) this);
+        locationManager.requestLocationUpdates(LocationManager.NETWORK_PROVIDER, GPS_UPDATE_INTERVAL, 0, (LocationListener) this);
 
-//////////////////////
         // Проверка подключения
         checkInternetConnection();
         checkServerConnection();
         handler.postDelayed(runnable, SEND_OR_SAVE_INTERVAL);
-//////////////////
 
         final String CHANNEL_ID = "Foreground service";
         NotificationChannel channel = new NotificationChannel(CHANNEL_ID, CHANNEL_ID, NotificationManager.IMPORTANCE_LOW);
@@ -147,7 +141,6 @@ public class MyService extends Service implements SensorEventListener, LocationL
         }
     }
 
-
     private Runnable runnable = new Runnable() {
         @Override
         public void run() {
@@ -159,7 +152,6 @@ public class MyService extends Service implements SensorEventListener, LocationL
 
     public void onDestroy() {
         super.onDestroy();
-        Log.d("LOG_TAG", "destroy_service");
         sensorManager.unregisterListener(this);
 
         handler.removeCallbacks(runnable);
@@ -223,7 +215,7 @@ public class MyService extends Service implements SensorEventListener, LocationL
         latitude = location.getLatitude();
         longitude = location.getLongitude();
         speed = location.getSpeed();
-        gpsData = latitude + "; " + longitude;
+        gpsData = latitude + "; " + longitude+ "; " + speed;
         sendGPSToBroadcast();
     }
 
@@ -247,7 +239,6 @@ public class MyService extends Service implements SensorEventListener, LocationL
         broadcastIntent.putExtra("latitude", latitude);
         broadcastIntent.putExtra("longitude", longitude);
         broadcastIntent.putExtra("speed", speed);
-
         sendBroadcast(broadcastIntent);
     }
 
@@ -257,10 +248,8 @@ public class MyService extends Service implements SensorEventListener, LocationL
         broadcastIntent.putExtra("accelerometerValue", accelerometerValue);
         broadcastIntent.putExtra("linearAccelerometerValue", linearAccelerometerValue);
         broadcastIntent.putExtra("gravityValue", gravityValue);
-
         sendBroadcast(broadcastIntent);
     }
-
 
     private void checkInternetConnection() {
         pool.submit(new Runnable() {
@@ -331,12 +320,6 @@ public class MyService extends Service implements SensorEventListener, LocationL
             @Override
             public void run() {
                 String fileName = new SimpleDateFormat("yyyy-MM-dd HHmm", Locale.US).format(new Date()) + ".txt";
-                File documentsDirectory = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOCUMENTS);
-
-                if (!documentsDirectory.exists()) {
-                    documentsDirectory.mkdirs(); // Создание каталога, если он не существует
-                }
-                File file = new File(documentsDirectory, fileName);
 
                 if (!getFilesDir().exists()) {
                     getFilesDir().mkdirs(); // Создание каталога, если он не существует
@@ -344,12 +327,6 @@ public class MyService extends Service implements SensorEventListener, LocationL
                 File appDirectory = new File(getFilesDir(), fileName);
 
                 try {
-                    BufferedWriter writer = new BufferedWriter(new FileWriter(file));
-                    writer.append(data);
-                    writer.append("\n");
-                    writer.flush();
-                    writer.close();
-
                     BufferedWriter writer1 = new BufferedWriter(new FileWriter(appDirectory));
                     writer1.append(data);
                     writer1.append("\n");
@@ -418,17 +395,13 @@ public class MyService extends Service implements SensorEventListener, LocationL
                         os.write(input, 0, input.length);
                     }
 
-                    try (BufferedReader br = new BufferedReader(
-                            new InputStreamReader(connection.getInputStream(), "utf-8"))) {
-                        StringBuilder response = new StringBuilder();
-                        String responseLine = null;
-                        while ((responseLine = br.readLine()) != null) {
-                            response.append(responseLine.trim());
-                        }
-                    }
-
-                } catch (IOException e) {
-                } catch (JSONException e) {
+                    String response = String.valueOf(connection.getResponseMessage());
+                    connection.disconnect();
+                }
+                catch (IOException e ) {
+                    throw new RuntimeException(e);
+                }
+                catch (JSONException e) {
                     throw new RuntimeException(e);
                 }
             }

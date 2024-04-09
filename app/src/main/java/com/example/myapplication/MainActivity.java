@@ -19,7 +19,6 @@ import android.location.LocationManager;
 import android.os.Handler;
 import androidx.core.content.ContextCompat;
 import android.provider.Settings;
-import android.util.Log;
 import android.view.View;
 import android.widget.Button;
 import android.widget.TextView;
@@ -37,7 +36,6 @@ import java.util.List;
 import java.util.Map;
 
 public class MainActivity extends AppCompatActivity {
-
     private TextView accelerometerTextView;
     private TextView gpsTextView;
     private MapView mapView;
@@ -177,7 +175,6 @@ public class MainActivity extends AppCompatActivity {
         if (!permissionRequest.isEmpty()){
             mPermissionResultLauncher.launch(permissionRequest.toArray(new String[0]));
         }
-
     }
 
     public class MyBroadcastReceiver extends BroadcastReceiver {
@@ -206,9 +203,9 @@ public class MainActivity extends AppCompatActivity {
 
     private void updateUIWithGPSData(double latitude, double longitude, double speed) {
         runOnUiThread(new Runnable() {
+            @SuppressLint("SetTextI18n")
             @Override
             public void run() {
-                Log.d("main", String.valueOf(latitude));
                 gpsTextView.setText("GPS\n=>Latitude: " + latitude +
                         "\n=>Longitude: " + longitude
                 +"\n=>Speed: " + speed);
@@ -229,19 +226,19 @@ public class MainActivity extends AppCompatActivity {
 
     private void updateUIWithAccelerometerData(float[] accelerometerValue, float[] linearAccelerometerValue, float[] gravityValue) {
         runOnUiThread(new Runnable() {
+            @SuppressLint("SetTextI18n")
             @Override
             public void run() {
-                Log.d("main", "String.valueOf(accelerometerValue[0])");
-                DecimalFormat df = new DecimalFormat("#.#####");
-                accelerometerTextView.setText("Accelerometer\n=>X: " + df.format(accelerometerValue[0]) +
-                        "\n=>Y: " + df.format(accelerometerValue[1]) +
-                        "\n=>Z: " + df.format(accelerometerValue[2])+
-                        "\n"+df.format(gravityValue[0])+
-                        "\n"+df.format(gravityValue[1])+
-                        "\n"+ df.format(gravityValue[2])+
-                        "\n=>Xl: " + df.format(linearAccelerometerValue[0]) +
-                        "\n=>Yl: " + df.format(linearAccelerometerValue[1]) +
-                        "\n=>Zl: " + df.format(linearAccelerometerValue[2])
+                DecimalFormat dF = new DecimalFormat( "#.#####" );
+                accelerometerTextView.setText("Accelerometer\n=>X: " + dF.format(accelerometerValue[0]) +
+                        "\n=>Y: " + dF.format(accelerometerValue[1]) +
+                        "\n=>Z: " + dF.format(accelerometerValue[2])+
+                        "\n"+dF.format(gravityValue[0])+
+                        "\n"+dF.format(gravityValue[1])+
+                        "\n"+ dF.format(gravityValue[2])+
+                        "\n=>Xl: " + dF.format(linearAccelerometerValue[0]) +
+                        "\n=>Yl: " + dF.format(linearAccelerometerValue[1]) +
+                        "\n=>Zl: " + dF.format(linearAccelerometerValue[2])
                 );
             }
         });
@@ -250,8 +247,6 @@ public class MainActivity extends AppCompatActivity {
     @Override
     protected void onResume() {
         super.onResume();
-        Log.d("systeminfo", "onResume");
-
         // Регистрация приемника широковещательных сообщений
         receiver = new MyBroadcastReceiver(new Handler()); // Create the receiver
         registerReceiver(receiver, new IntentFilter("gpsDataUpdated")); // Register receiver
@@ -264,10 +259,8 @@ public class MainActivity extends AppCompatActivity {
     @Override
     protected void onPause() {
         super.onPause();
-        Log.d("systeminfo", "onPause");
-
-        unregisterReceiver(receiver);
         mapView.onPause();
+        unregisterReceiver(receiver);
 
         if (!checkLocationEnabled()) showLocationAlert();
     }
@@ -275,8 +268,7 @@ public class MainActivity extends AppCompatActivity {
     @Override
     protected void onDestroy() {
         super.onDestroy();
-        Log.d("systeminfo", "onDestroy");
-
+        mapView.onPause();
         unregisterReceiver(receiver);
     }
 }
