@@ -14,6 +14,7 @@ import android.text.TextUtils;
 import android.view.View;
 import android.widget.Button;
 import android.widget.EditText;
+import android.widget.TextView;
 import android.widget.Toast;
 import org.json.JSONException;
 import org.json.JSONObject;
@@ -28,36 +29,43 @@ import java.util.concurrent.Executors;
 
 public class LoginActivity extends AppCompatActivity implements View.OnClickListener {
 
-    private String URL = "http://89.179.33.18:27011";
+    private String URL = "http://89.179.33.18:27012";
     private boolean isInternetConnected;
     private boolean isServerConnected;
     private SharedPreferences sharedPreferences;
     private static final String EMAIL_PREF = "email_pref";
     private static final String EMAIL_KEY = "email_key";
     private static final String ID_KEY = "id_key";
-    private boolean isEmailSet;
+    private static final String URL_KEY = "url_key";
+    private boolean isEmailSet, isUrlSet;
     private String ID_USER;
-    private EditText email;
+    private EditText email, urlTextView;
 
     private ExecutorService pool = Executors.newSingleThreadExecutor();
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+
         setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_PORTRAIT);
         setContentView(R.layout.activity_login);
 
         email = (EditText) findViewById(R.id.editTextTextEmailAddress);
+        urlTextView = (EditText) findViewById(R.id.editTextTextUrl);
+        urlTextView.setText(URL);
+
         Button btnSend = (Button) findViewById(R.id.buttonSendEmail);
         btnSend.setOnClickListener((View.OnClickListener) this);
-
 
         sharedPreferences = getSharedPreferences(EMAIL_PREF, MODE_PRIVATE);
         String userEmail = sharedPreferences.getString(EMAIL_KEY, null);
         String idUser = sharedPreferences.getString(ID_KEY, null);
+        String userUrl = sharedPreferences.getString(URL_KEY, null);
         isEmailSet = !TextUtils.isEmpty(userEmail);
-        if (isEmailSet) {
+        isUrlSet = !TextUtils.isEmpty(userUrl);
+        if (isEmailSet && isUrlSet) {
             ID_USER = idUser;
+            URL = userUrl;
             Intent intent = new Intent(LoginActivity.this, MainActivity.class);
             startActivity(intent);
         }
@@ -65,6 +73,7 @@ public class LoginActivity extends AppCompatActivity implements View.OnClickList
 
     public void onClick(View v) {
         String emailText = String.valueOf(email.getText());
+        URL = String.valueOf((urlTextView.getText()));
 
         checkInternetConnection();
         checkServerConnection();
@@ -176,6 +185,7 @@ public class LoginActivity extends AppCompatActivity implements View.OnClickList
     private void saveEmail(String email, String id) {
         SharedPreferences.Editor editor = sharedPreferences.edit();
         editor.putString(EMAIL_KEY, email);
+        editor.putString(URL_KEY, URL);
         editor.putString(ID_KEY, id);
         editor.apply();
     }

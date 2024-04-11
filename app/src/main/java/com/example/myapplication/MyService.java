@@ -70,7 +70,8 @@ public class MyService extends Service implements SensorEventListener, LocationL
     private SharedPreferences sharedPreferences;
     private static final String EMAIL_PREF = "email_pref";
     private static final String ID_KEY = "id_key";
-    private boolean isIdSet;
+    private static final String URL_KEY = "url_key";
+    private boolean isIdSet, isUrlSet;
     private String ID_USER;
 
     private Handler handler = new Handler();
@@ -96,9 +97,14 @@ public class MyService extends Service implements SensorEventListener, LocationL
 
         sharedPreferences = getSharedPreferences(EMAIL_PREF, MODE_PRIVATE);
         String idUser = sharedPreferences.getString(ID_KEY, null);
+        String userUrl = sharedPreferences.getString(URL_KEY, null);
         isIdSet = !TextUtils.isEmpty(idUser);
         if (isIdSet) {
             ID_USER = idUser;
+        }
+        isUrlSet = !TextUtils.isEmpty(userUrl);
+        if (isIdSet) {
+            URL = userUrl;
         }
     }
 
@@ -108,8 +114,10 @@ public class MyService extends Service implements SensorEventListener, LocationL
         sensorManager.registerListener((SensorEventListener) this,gravity,SensorManager.SENSOR_DELAY_NORMAL);
         if (ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED && ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_COARSE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
         }
+
         locationManager.requestLocationUpdates(LocationManager.GPS_PROVIDER, GPS_UPDATE_INTERVAL, 0, (LocationListener) this);
         locationManager.requestLocationUpdates(LocationManager.NETWORK_PROVIDER, GPS_UPDATE_INTERVAL, 0, (LocationListener) this);
+
 
         // Проверка подключения
         checkInternetConnection();
@@ -216,6 +224,7 @@ public class MyService extends Service implements SensorEventListener, LocationL
         longitude = location.getLongitude();
         speed = location.getSpeed();
         gpsData = latitude + "; " + longitude+ "; " + speed;
+        System.out.println(latitude + "; " + longitude+ "; " + speed);
         sendGPSToBroadcast();
     }
 
@@ -286,6 +295,8 @@ public class MyService extends Service implements SensorEventListener, LocationL
             dataArrayList.add(new SimpleDateFormat("yyyy-MM-dd HH:mm:ss.SSS", Locale.US).format(System.currentTimeMillis())
                     + "; " + gpsData + "; " + accelerometerData +"\n");
         }
+        System.out.println(new SimpleDateFormat("yyyy-MM-dd HH:mm:ss.SSS", Locale.US).format(System.currentTimeMillis())
+                + "; " + gpsData + "; " + accelerometerData +"\n");
     }
 
     private void sendData() {
@@ -398,11 +409,8 @@ public class MyService extends Service implements SensorEventListener, LocationL
                     String response = String.valueOf(connection.getResponseMessage());
                     connection.disconnect();
                 }
-                catch (IOException e ) {
-                    throw new RuntimeException(e);
-                }
-                catch (JSONException e) {
-                    throw new RuntimeException(e);
+                catch (IOException | JSONException e) {
+                    e.printStackTrace();
                 }
             }
         });

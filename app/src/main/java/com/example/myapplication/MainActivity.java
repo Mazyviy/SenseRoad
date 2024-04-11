@@ -3,81 +3,142 @@ package com.example.myapplication;
 import androidx.activity.result.ActivityResultCallback;
 import androidx.activity.result.ActivityResultLauncher;
 import androidx.activity.result.contract.ActivityResultContracts;
+import androidx.annotation.RequiresApi;
 import androidx.appcompat.app.AlertDialog;
 import androidx.appcompat.app.AppCompatActivity;
 import android.annotation.SuppressLint;
+import android.app.Activity;
 import android.app.ActivityManager;
 import android.content.BroadcastReceiver;
+import android.content.DialogInterface;
 import android.content.Intent;
 import android.content.IntentFilter;
+import android.content.SharedPreferences;
 import android.content.pm.ActivityInfo;
+import android.database.Cursor;
+import android.database.sqlite.SQLiteDatabase;
+import android.graphics.Bitmap;
+import android.graphics.drawable.BitmapDrawable;
+import android.graphics.drawable.Drawable;
+import android.os.Build;
 import android.os.Bundle;
 import android.Manifest;
 import android.content.Context;
 import android.content.pm.PackageManager;
 import android.location.LocationManager;
 import android.os.Handler;
+
 import androidx.core.content.ContextCompat;
+import androidx.core.content.res.ResourcesCompat;
+
+import android.preference.PreferenceManager;
 import android.provider.Settings;
+import android.text.TextUtils;
 import android.view.View;
+import android.view.WindowManager;
 import android.widget.Button;
+import android.widget.EditText;
 import android.widget.TextView;
+
+import org.json.JSONArray;
+import org.json.JSONException;
+import org.json.JSONObject;
 import org.osmdroid.config.Configuration;
 import org.osmdroid.tileprovider.tilesource.TileSourceFactory;
 import org.osmdroid.util.GeoPoint;
 import org.osmdroid.views.MapController;
 import org.osmdroid.views.MapView;
+import org.osmdroid.views.overlay.ItemizedIconOverlay;
 import org.osmdroid.views.overlay.Marker;
+import org.osmdroid.views.overlay.OverlayItem;
 import org.osmdroid.views.overlay.ScaleBarOverlay;
+import org.osmdroid.views.overlay.mylocation.MyLocationNewOverlay;
 
+import java.io.BufferedReader;
+import java.io.BufferedWriter;
+import java.io.File;
+import java.io.FileNotFoundException;
+import java.io.FileReader;
+import java.io.FileWriter;
+import java.io.IOException;
+import java.io.InputStreamReader;
+import java.io.OutputStream;
+import java.net.HttpURLConnection;
+import java.net.URL;
 import java.text.DecimalFormat;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.stream.Stream;
 
 public class MainActivity extends AppCompatActivity {
     private TextView accelerometerTextView;
-    private TextView gpsTextView;
+    private TextView gpsTextView, urlTextView;
     private MapView mapView;
     private Marker currentMarker;
 
+    private String URL = "http://89.179.33.18:27012";
+
     ActivityResultLauncher<String[]> mPermissionResultLauncher;
     private boolean isWritePermissionGranted = false;
+    private boolean isReadPermissionGranted = false;
     private boolean isLocationPermissionGranted = false;
     private boolean isServiceRunning = false;
     private MyBroadcastReceiver receiver;
+
+    private Context context;
+    private Activity theActivity;
+    private SharedPreferences applicationPrefs;
+    private static final String URL_KEY = "url_key";
+
+
+    private Handler handler = new Handler();
+    private ExecutorService pool = Executors.newSingleThreadExecutor();
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_PORTRAIT);
         setContentView(R.layout.activity_main);
+        context = this;
+        theActivity = (Activity)context;
 
         // Инициализация текстовых полей
+        urlTextView = findViewById(R.id.urlTextView);
         gpsTextView = findViewById(R.id.gpsTextView);
         accelerometerTextView = findViewById(R.id.accelerometerTextView);
 
         isServiceRunning = foregroundServiceRunning();
-        final Button btnToggle = findViewById(R.id.button_toggle);
+        final Button btnStartService = findViewById(R.id.btnStartService);
 
-        btnToggle.setOnClickListener(new View.OnClickListener() {
+
+        applicationPrefs = PreferenceManager.getDefaultSharedPreferences(context);
+        if (!applicationPrefs.contains(URL_KEY))
+            applicationPrefs.edit().putString(URL_KEY, URL).apply();
+        else URL = applicationPrefs.getString(URL_KEY, URL);
+
+        btnStartService.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View view) {
                 if (isServiceRunning) {
                     stopService(new Intent(MainActivity.this, MyService.class));
                     isServiceRunning = false;
-                    btnToggle.setText("Запустить службу");
+                    btnStartService.setText("Запустить службу");
                 } else {
                     if (!checkLocationEnabled()) showLocationAlert();
                     else {
                         startForegroundService(new Intent(MainActivity.this, MyService.class));
 
                         isServiceRunning = true;
-                        btnToggle.setText("Остановить службу");
+                        btnStartService.setText("Остановить службу");
                     }
                 }
             }
         });
+
 
         // Регистрация приемника широковещательных сообщений
         receiver = new MyBroadcastReceiver(new Handler()); // Create the receiver
@@ -104,9 +165,12 @@ public class MainActivity extends AppCompatActivity {
                 if(result.get(Manifest.permission.ACCESS_FINE_LOCATION) != null) {
                     isLocationPermissionGranted = result.get(Manifest.permission.ACCESS_FINE_LOCATION);
                 }
+                if(result.get(Manifest.permission.READ_EXTERNAL_STORAGE) != null) {
+                    isReadPermissionGranted = result.get(Manifest.permission.READ_EXTERNAL_STORAGE);
+                }
 
                 if (isWritePermissionGranted && isLocationPermissionGranted ) {
-                    btnToggle.performClick();
+                    btnStartService.performClick();
                 } else {
                     requestPermission();
                 }
@@ -116,9 +180,40 @@ public class MainActivity extends AppCompatActivity {
         mPermissionResultLauncher = registerForActivityResult(new ActivityResultContracts.RequestMultiplePermissions(), callback);
         requestPermission();
 
+        urlTextView.setText(URL);
+
         if (!checkLocationEnabled()) showLocationAlert();
 
-        btnToggle.performClick();
+        uploadHoleServer();
+    }
+
+    public static void requestStringInDialog(String title, String message, String defaultString, EditText input,
+                                             DialogInterface.OnClickListener onPositiveListener, Activity activity, Context context){
+        input.setText(defaultString);
+        input.selectAll();
+        AlertDialog alert = new AlertDialog.Builder(context)
+                .setTitle(title)
+                .setMessage(message)
+                .setView(input)
+                .setNegativeButton(android.R.string.cancel, null) // dismisses by default
+                .setPositiveButton(android.R.string.ok, onPositiveListener)
+                .create();
+        alert.show();
+        if(input.requestFocus())
+            alert.getWindow().setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_STATE_ALWAYS_VISIBLE);
+    }
+
+    public void updateUrl(View view){
+        final EditText input = new EditText(context);
+        requestStringInDialog("server URL", "Edit server address", URL, input,
+                new DialogInterface.OnClickListener() {
+                    @Override
+                    public void onClick(DialogInterface dialog, int which) {
+                        URL = input.getText().toString();
+                        urlTextView.setText(URL);
+                        applicationPrefs.edit().putString(URL_KEY, URL).apply();
+                    }
+                }, theActivity, context);
     }
 
     private boolean checkLocationEnabled() {
@@ -152,6 +247,105 @@ public class MainActivity extends AppCompatActivity {
         }
         return false;
     }
+
+    public void uploadHole(View view) {
+        readHoleServer();
+    }
+
+    private void uploadHoleServer(){
+        pool.submit(new Runnable() {
+            @Override
+            public void run() {
+                try {
+                    URL serverUrl = new URL(URL);
+                    HttpURLConnection connection = (HttpURLConnection) serverUrl.openConnection();
+                    connection.setRequestMethod("POST");
+                    connection.setRequestProperty("Content-Type", "application/json");
+                    connection.setDoOutput(true);
+                    JSONObject jsonRequest = new JSONObject();
+                    jsonRequest.put("hole", "hole");
+
+                    try (OutputStream os = connection.getOutputStream()) {
+                        byte[] input = jsonRequest.toString().getBytes("utf-8");
+                        os.write(input, 0, input.length);
+                    }
+
+                    // Получение кода ответа
+                    int responseCode = connection.getResponseCode();
+                    // Проверка кода ответа
+                    if (responseCode != 200) {
+                        throw new RuntimeException("Ошибка HTTP: " + responseCode);
+                    }
+
+                    // Получение тела ответа
+                    BufferedReader reader = new BufferedReader(new InputStreamReader(connection.getInputStream()));
+                    String responseBody = reader.readLine();
+
+                    // Преобразование тела ответа в объект JSON
+                    JSONObject jsonResponse = new JSONObject(responseBody);
+                    JSONArray dataArray = jsonResponse.getJSONArray("hole");
+
+                    // create database
+                    File directory = getFilesDir();
+                    File hole_dir = new File(directory, "hole");
+                    if (!hole_dir.exists()) {
+                        hole_dir.mkdirs(); // Создание каталога, если он не существует
+                    }
+                    File dbFile = new File(hole_dir, "sense.db");
+
+                    SQLiteDatabase db = SQLiteDatabase.openOrCreateDatabase(dbFile, null);
+
+                    Cursor cursor = db.rawQuery("SELECT name FROM sqlite_master WHERE type='table' AND name='hole'", null);
+                    boolean tableExists = cursor.moveToFirst();
+                    if (tableExists) {
+                        db.execSQL("DELETE FROM hole");
+                    }
+                    db.execSQL("CREATE TABLE IF NOT EXISTS hole (date TEXT, id_user TEXT, latitude REAL, longitude REAL, speed REAL, value_hole REAL)");
+
+                    for (int i = 0; i < dataArray.length(); i++) {
+                        JSONArray obj = dataArray.getJSONArray(i);
+                        db.execSQL("INSERT OR IGNORE INTO hole VALUES ('" + obj.getString(0) + "', '" + obj.getString(1) + "', " +
+                                obj.getDouble(2) + ", " + obj.getDouble(3) + ", " + obj.getDouble(4) + ", " + obj.getDouble(5) + ");");
+                    }
+
+                    db.close();
+
+                } catch (IOException | JSONException e) {
+                    e.printStackTrace();
+                }
+            }
+        });
+    }
+
+    private void readHoleServer(){
+        File directory = getFilesDir();
+        File hole_dir = new File(directory, "hole");
+        File dbFile = new File(hole_dir, "sense.db");
+        SQLiteDatabase db = SQLiteDatabase.openOrCreateDatabase(dbFile, null);
+
+        // print database
+        Cursor query = db.rawQuery("SELECT * FROM hole;", null);
+        while (query.moveToNext()) {
+            Double lat = query.getDouble(2);
+            Double lon = query.getDouble(3);
+            Double value = query.getDouble(5);
+
+            // Создаем объект OverlayItem
+            Marker startMarker = new Marker(mapView);
+
+            startMarker.setDraggable(false);
+            startMarker.setAnchor(0.5f, 0.5f);
+            mapView.setLayerType(View.LAYER_TYPE_SOFTWARE, null);
+            //startMarker.setIcon(getResources().getDrawable(R.drawable.m_hole));
+            startMarker.setPosition(new GeoPoint(lat, lon));
+            startMarker.setTitle(String.valueOf(value));
+        }
+        query.close();
+        db.close();
+
+        mapView.invalidate();
+    }
+
 
     private void requestPermission(){
         isWritePermissionGranted = ContextCompat.checkSelfPermission(
@@ -259,6 +453,7 @@ public class MainActivity extends AppCompatActivity {
     @Override
     protected void onPause() {
         super.onPause();
+        accelerometerTextView.setText("");
         mapView.onPause();
         unregisterReceiver(receiver);
 
