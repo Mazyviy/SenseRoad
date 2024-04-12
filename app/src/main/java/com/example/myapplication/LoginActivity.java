@@ -10,11 +10,11 @@ import android.net.ConnectivityManager;
 import android.net.NetworkInfo;
 import android.os.AsyncTask;
 import android.os.Bundle;
+import android.preference.PreferenceManager;
 import android.text.TextUtils;
 import android.view.View;
 import android.widget.Button;
 import android.widget.EditText;
-import android.widget.TextView;
 import android.widget.Toast;
 import org.json.JSONException;
 import org.json.JSONObject;
@@ -24,6 +24,7 @@ import java.io.InputStreamReader;
 import java.io.OutputStream;
 import java.net.HttpURLConnection;
 import java.net.URL;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
@@ -33,13 +34,15 @@ public class LoginActivity extends AppCompatActivity implements View.OnClickList
     private boolean isInternetConnected;
     private boolean isServerConnected;
     private SharedPreferences sharedPreferences;
-    private static final String EMAIL_PREF = "email_pref";
     private static final String EMAIL_KEY = "email_key";
     private static final String ID_KEY = "id_key";
     private static final String URL_KEY = "url_key";
     private boolean isEmailSet, isUrlSet;
     private String ID_USER;
     private EditText email, urlTextView;
+
+    // Создать CountDownLatch для отслеживания выполнения проверок
+    final CountDownLatch latch = new CountDownLatch(2);
 
     private ExecutorService pool = Executors.newSingleThreadExecutor();
 
@@ -57,7 +60,7 @@ public class LoginActivity extends AppCompatActivity implements View.OnClickList
         Button btnSend = (Button) findViewById(R.id.buttonSendEmail);
         btnSend.setOnClickListener((View.OnClickListener) this);
 
-        sharedPreferences = getSharedPreferences(EMAIL_PREF, MODE_PRIVATE);
+        sharedPreferences = PreferenceManager.getDefaultSharedPreferences(this);
         String userEmail = sharedPreferences.getString(EMAIL_KEY, null);
         String idUser = sharedPreferences.getString(ID_KEY, null);
         String userUrl = sharedPreferences.getString(URL_KEY, null);
@@ -78,6 +81,14 @@ public class LoginActivity extends AppCompatActivity implements View.OnClickList
         checkInternetConnection();
         checkServerConnection();
 
+        // Ожидать завершения проверок
+        try {
+            latch.await();
+        } catch (InterruptedException e) {
+            e.printStackTrace();
+        }
+
+
         if (isInternetConnected==false) {
             Toast.makeText(LoginActivity.this, "Нет доступа к интернету! Для регистрации требуется интернет", Toast.LENGTH_SHORT).show();
         }
@@ -96,6 +107,9 @@ public class LoginActivity extends AppCompatActivity implements View.OnClickList
                 ConnectivityManager connectivityManager = (ConnectivityManager) getSystemService(Context.CONNECTIVITY_SERVICE);
                 NetworkInfo networkInfo = connectivityManager.getActiveNetworkInfo();
                 isInternetConnected = networkInfo != null && networkInfo.isConnected();
+
+                // Уменьшить счетчик, чтобы указать, что проверка завершена
+                latch.countDown();
             }
         });
     }
@@ -115,6 +129,9 @@ public class LoginActivity extends AppCompatActivity implements View.OnClickList
                 } catch (IOException e) {
                     isServerConnected = false;
                 }
+
+                // Уменьшить счетчик, чтобы указать, что проверка завершена
+                latch.countDown();
             }
         });
     }

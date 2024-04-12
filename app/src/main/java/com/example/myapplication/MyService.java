@@ -9,7 +9,6 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
-import android.content.pm.ServiceInfo;
 import android.hardware.Sensor;
 import android.hardware.SensorEvent;
 import android.hardware.SensorEventListener;
@@ -23,8 +22,8 @@ import android.os.Bundle;
 import android.os.Handler;
 import android.os.IBinder;
 import android.os.PowerManager;
+import android.preference.PreferenceManager;
 import android.text.TextUtils;
-import android.util.Log;
 import android.widget.Toast;
 import androidx.core.app.ActivityCompat;
 
@@ -64,7 +63,7 @@ public class MyService extends Service implements SensorEventListener, LocationL
     private static final long GPS_UPDATE_INTERVAL = 1000; // в миллисекундах
     private static final long SEND_OR_SAVE_INTERVAL = 1000*60*3; // в миллисекундах
 
-    private String URL = "http://89.179.33.18:27011";
+    private String URL = "http://89.179.33.18:27012";
     private CopyOnWriteArrayList<String> dataArrayList;
 
     private SharedPreferences sharedPreferences;
@@ -85,9 +84,7 @@ public class MyService extends Service implements SensorEventListener, LocationL
         // Инициализация датчиков
         sensorManager = (SensorManager) getSystemService(Context.SENSOR_SERVICE);
         accelerometer = sensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER);
-        /////////
         gravity = sensorManager.getDefaultSensor(Sensor.TYPE_GRAVITY);
-        ////////////
         locationManager = (LocationManager) getSystemService(Context.LOCATION_SERVICE);
 
         dataArrayList = new CopyOnWriteArrayList<>();
@@ -95,7 +92,7 @@ public class MyService extends Service implements SensorEventListener, LocationL
         final PowerManager powerManager = (PowerManager) getSystemService(Context.POWER_SERVICE);
         wakeLock = powerManager.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, TAG);
 
-        sharedPreferences = getSharedPreferences(EMAIL_PREF, MODE_PRIVATE);
+        sharedPreferences = PreferenceManager.getDefaultSharedPreferences(this);
         String idUser = sharedPreferences.getString(ID_KEY, null);
         String userUrl = sharedPreferences.getString(URL_KEY, null);
         isIdSet = !TextUtils.isEmpty(idUser);
@@ -112,12 +109,11 @@ public class MyService extends Service implements SensorEventListener, LocationL
         // Регистрация слушателей датчиков
         sensorManager.registerListener((SensorEventListener) this, accelerometer, SensorManager.SENSOR_DELAY_NORMAL);
         sensorManager.registerListener((SensorEventListener) this,gravity,SensorManager.SENSOR_DELAY_NORMAL);
-        if (ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED && ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_COARSE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
+        if (ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED
+                && ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_COARSE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
         }
-
         locationManager.requestLocationUpdates(LocationManager.GPS_PROVIDER, GPS_UPDATE_INTERVAL, 0, (LocationListener) this);
         locationManager.requestLocationUpdates(LocationManager.NETWORK_PROVIDER, GPS_UPDATE_INTERVAL, 0, (LocationListener) this);
-
 
         // Проверка подключения
         checkInternetConnection();
@@ -131,7 +127,6 @@ public class MyService extends Service implements SensorEventListener, LocationL
         Notification.Builder notification = new Notification.Builder(this, CHANNEL_ID)
                 .setContentTitle("Run SensRoad")
                 .setContentText("Запущена служба SensRoad");
-
 
         startForeground(1001, notification.build());
 
@@ -224,7 +219,6 @@ public class MyService extends Service implements SensorEventListener, LocationL
         longitude = location.getLongitude();
         speed = location.getSpeed();
         gpsData = latitude + "; " + longitude+ "; " + speed;
-        System.out.println(latitude + "; " + longitude+ "; " + speed);
         sendGPSToBroadcast();
     }
 
@@ -295,8 +289,6 @@ public class MyService extends Service implements SensorEventListener, LocationL
             dataArrayList.add(new SimpleDateFormat("yyyy-MM-dd HH:mm:ss.SSS", Locale.US).format(System.currentTimeMillis())
                     + "; " + gpsData + "; " + accelerometerData +"\n");
         }
-        System.out.println(new SimpleDateFormat("yyyy-MM-dd HH:mm:ss.SSS", Locale.US).format(System.currentTimeMillis())
-                + "; " + gpsData + "; " + accelerometerData +"\n");
     }
 
     private void sendData() {
@@ -330,15 +322,20 @@ public class MyService extends Service implements SensorEventListener, LocationL
         pool.submit(new Runnable() {
             @Override
             public void run() {
-                String fileName = new SimpleDateFormat("yyyy-MM-dd HHmm", Locale.US).format(new Date()) + ".txt";
 
-                if (!getFilesDir().exists()) {
-                    getFilesDir().mkdirs(); // Создание каталога, если он не существует
+                String fileName = new SimpleDateFormat("yyyy-MM-dd HHmm", Locale.US).format(new Date()) + ".txt";
+                File directory = getFilesDir();
+                if (!directory.exists()) {
+                    directory.mkdirs();
                 }
-                File appDirectory = new File(getFilesDir(), fileName);
+                File user_dir = new File(directory, "c");
+                if (!user_dir.exists()) {
+                    user_dir.mkdirs();
+                }
+                File file_user = new File(user_dir, fileName);
 
                 try {
-                    BufferedWriter writer1 = new BufferedWriter(new FileWriter(appDirectory));
+                    BufferedWriter writer1 = new BufferedWriter(new FileWriter(file_user));
                     writer1.append(data);
                     writer1.append("\n");
                     writer1.flush();
@@ -371,7 +368,8 @@ public class MyService extends Service implements SensorEventListener, LocationL
             @Override
             public void run() {
                 File directory = getFilesDir();
-                File[] files = directory.listFiles();
+                File user_dir = new File(directory, "user_dir");
+                File[] files = user_dir.listFiles();
 
                 if (files != null) {
                     for (File file : files) {

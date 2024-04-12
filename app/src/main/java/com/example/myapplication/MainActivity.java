@@ -3,7 +3,6 @@ package com.example.myapplication;
 import androidx.activity.result.ActivityResultCallback;
 import androidx.activity.result.ActivityResultLauncher;
 import androidx.activity.result.contract.ActivityResultContracts;
-import androidx.annotation.RequiresApi;
 import androidx.appcompat.app.AlertDialog;
 import androidx.appcompat.app.AppCompatActivity;
 import android.annotation.SuppressLint;
@@ -17,23 +16,17 @@ import android.content.SharedPreferences;
 import android.content.pm.ActivityInfo;
 import android.database.Cursor;
 import android.database.sqlite.SQLiteDatabase;
-import android.graphics.Bitmap;
-import android.graphics.drawable.BitmapDrawable;
-import android.graphics.drawable.Drawable;
-import android.os.Build;
+import android.net.ConnectivityManager;
+import android.net.NetworkInfo;
 import android.os.Bundle;
 import android.Manifest;
 import android.content.Context;
 import android.content.pm.PackageManager;
 import android.location.LocationManager;
 import android.os.Handler;
-
 import androidx.core.content.ContextCompat;
-import androidx.core.content.res.ResourcesCompat;
-
 import android.preference.PreferenceManager;
 import android.provider.Settings;
-import android.text.TextUtils;
 import android.view.View;
 import android.view.WindowManager;
 import android.widget.Button;
@@ -48,18 +41,11 @@ import org.osmdroid.tileprovider.tilesource.TileSourceFactory;
 import org.osmdroid.util.GeoPoint;
 import org.osmdroid.views.MapController;
 import org.osmdroid.views.MapView;
-import org.osmdroid.views.overlay.ItemizedIconOverlay;
 import org.osmdroid.views.overlay.Marker;
-import org.osmdroid.views.overlay.OverlayItem;
 import org.osmdroid.views.overlay.ScaleBarOverlay;
-import org.osmdroid.views.overlay.mylocation.MyLocationNewOverlay;
 
 import java.io.BufferedReader;
-import java.io.BufferedWriter;
 import java.io.File;
-import java.io.FileNotFoundException;
-import java.io.FileReader;
-import java.io.FileWriter;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.io.OutputStream;
@@ -67,12 +53,10 @@ import java.net.HttpURLConnection;
 import java.net.URL;
 import java.text.DecimalFormat;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
-import java.util.stream.Stream;
 
 public class MainActivity extends AppCompatActivity {
     private TextView accelerometerTextView;
@@ -84,16 +68,18 @@ public class MainActivity extends AppCompatActivity {
 
     ActivityResultLauncher<String[]> mPermissionResultLauncher;
     private boolean isWritePermissionGranted = false;
-    private boolean isReadPermissionGranted = false;
     private boolean isLocationPermissionGranted = false;
+    private boolean isReadPermissionGranted = false;
     private boolean isServiceRunning = false;
+    private boolean isBackLocationPermissionGranted = false;
     private MyBroadcastReceiver receiver;
 
     private Context context;
     private Activity theActivity;
     private SharedPreferences applicationPrefs;
     private static final String URL_KEY = "url_key";
-
+    private boolean isInternetConnected;
+    private boolean isServerConnected;
 
     private Handler handler = new Handler();
     private ExecutorService pool = Executors.newSingleThreadExecutor();
@@ -114,36 +100,10 @@ public class MainActivity extends AppCompatActivity {
         isServiceRunning = foregroundServiceRunning();
         final Button btnStartService = findViewById(R.id.btnStartService);
 
-
-        applicationPrefs = PreferenceManager.getDefaultSharedPreferences(context);
+        applicationPrefs = PreferenceManager.getDefaultSharedPreferences(this);
         if (!applicationPrefs.contains(URL_KEY))
             applicationPrefs.edit().putString(URL_KEY, URL).apply();
         else URL = applicationPrefs.getString(URL_KEY, URL);
-
-        btnStartService.setOnClickListener(new View.OnClickListener() {
-            @Override
-            public void onClick(View view) {
-                if (isServiceRunning) {
-                    stopService(new Intent(MainActivity.this, MyService.class));
-                    isServiceRunning = false;
-                    btnStartService.setText("Запустить службу");
-                } else {
-                    if (!checkLocationEnabled()) showLocationAlert();
-                    else {
-                        startForegroundService(new Intent(MainActivity.this, MyService.class));
-
-                        isServiceRunning = true;
-                        btnStartService.setText("Остановить службу");
-                    }
-                }
-            }
-        });
-
-
-        // Регистрация приемника широковещательных сообщений
-        receiver = new MyBroadcastReceiver(new Handler()); // Create the receiver
-        registerReceiver(receiver, new IntentFilter("gpsDataUpdated")); // Register receiver
-        registerReceiver(receiver, new IntentFilter("accelerometerDataUpdated")); // Register receiver
 
         // Инициализация карты
         Configuration.getInstance().setUserAgentValue(getPackageName());
@@ -156,6 +116,12 @@ public class MainActivity extends AppCompatActivity {
         MapController mapController = (MapController) mapView.getController();
         mapController.setZoom(13);
 
+        // Регистрация приемника широковещательных сообщений
+        receiver = new MyBroadcastReceiver(new Handler()); // Create the receiver
+        registerReceiver(receiver, new IntentFilter("gpsDataUpdated")); // Register receiver
+        registerReceiver(receiver, new IntentFilter("accelerometerDataUpdated")); // Register receiver
+
+
         ActivityResultCallback<Map<String, Boolean>> callback = new ActivityResultCallback<Map<String, Boolean>>() {
             @Override
             public void onActivityResult(Map<String, Boolean> result) {
@@ -165,10 +131,12 @@ public class MainActivity extends AppCompatActivity {
                 if(result.get(Manifest.permission.ACCESS_FINE_LOCATION) != null) {
                     isLocationPermissionGranted = result.get(Manifest.permission.ACCESS_FINE_LOCATION);
                 }
+                if(result.get(Manifest.permission.ACCESS_BACKGROUND_LOCATION) != null) {
+                    isBackLocationPermissionGranted = result.get(Manifest.permission.ACCESS_BACKGROUND_LOCATION);
+                }
                 if(result.get(Manifest.permission.READ_EXTERNAL_STORAGE) != null) {
                     isReadPermissionGranted = result.get(Manifest.permission.READ_EXTERNAL_STORAGE);
                 }
-
                 if (isWritePermissionGranted && isLocationPermissionGranted ) {
                     btnStartService.performClick();
                 } else {
@@ -182,10 +150,67 @@ public class MainActivity extends AppCompatActivity {
 
         urlTextView.setText(URL);
 
+        checkInternetConnection();
+        checkServerConnection();
+        uploadHoleServer();
+
+        btnStartService.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View view) {
+                if (isServiceRunning) {
+                    accelerometerTextView.setText("");
+                    gpsTextView.setText("");
+                    stopService(new Intent(MainActivity.this, MyService.class));
+                    isServiceRunning = false;
+                    btnStartService.setText("Запустить службу");
+                } else {
+                    if (!checkLocationEnabled()) showLocationAlert();
+                    else {
+                        startForegroundService(new Intent(MainActivity.this, MyService.class));
+                        isServiceRunning = true;
+                        btnStartService.setText("Остановить службу");
+                    }
+                }
+            }
+        });
+
+        readHoleServer();
+
         if (!checkLocationEnabled()) showLocationAlert();
 
-        uploadHoleServer();
     }
+
+
+    private void checkInternetConnection() {
+        pool.submit(new Runnable() {
+            @Override
+            public void run() {
+                ConnectivityManager connectivityManager = (ConnectivityManager) getSystemService(Context.CONNECTIVITY_SERVICE);
+                NetworkInfo networkInfo = connectivityManager.getActiveNetworkInfo();
+                isInternetConnected = networkInfo != null && networkInfo.isConnected();
+            }
+        });
+    }
+
+    public void checkServerConnection() {
+        pool.submit(new Runnable() {
+            @Override
+            public void run() {
+                try {
+                    URL serverUrl = new URL(URL);
+                    HttpURLConnection connection = (HttpURLConnection) serverUrl.openConnection();
+                    connection.setRequestMethod("GET");
+                    connection.connect();
+
+                    int responseCode = connection.getResponseCode();
+                    isServerConnected = (responseCode == HttpURLConnection.HTTP_FORBIDDEN);
+                } catch (IOException e) {
+                    isServerConnected = false;
+                }
+            }
+        });
+    }
+
 
     public static void requestStringInDialog(String title, String message, String defaultString, EditText input,
                                              DialogInterface.OnClickListener onPositiveListener, Activity activity, Context context){
@@ -318,32 +343,43 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void readHoleServer(){
-        File directory = getFilesDir();
-        File hole_dir = new File(directory, "hole");
-        File dbFile = new File(hole_dir, "sense.db");
-        SQLiteDatabase db = SQLiteDatabase.openOrCreateDatabase(dbFile, null);
+        pool.submit(new Runnable() {
+            @Override
+            public void run() {
+                File directory = getFilesDir();
+                File hole_dir = new File(directory, "hole");
+                File dbFile = new File(hole_dir, "sense.db");
+                SQLiteDatabase db = SQLiteDatabase.openOrCreateDatabase(dbFile, null);
 
-        // print database
-        Cursor query = db.rawQuery("SELECT * FROM hole;", null);
-        while (query.moveToNext()) {
-            Double lat = query.getDouble(2);
-            Double lon = query.getDouble(3);
-            Double value = query.getDouble(5);
+                // Очистка существующих маркеров на карте
+                mapView.getOverlays().clear();
 
-            // Создаем объект OverlayItem
-            Marker startMarker = new Marker(mapView);
+                // print database
+                Cursor query = db.rawQuery("SELECT * FROM hole;", null);
+                while (query.moveToNext()) {
+                    Double lat = query.getDouble(2);
+                    Double lon = query.getDouble(3);
+                    Double value = query.getDouble(5);
 
-            startMarker.setDraggable(false);
-            startMarker.setAnchor(0.5f, 0.5f);
-            mapView.setLayerType(View.LAYER_TYPE_SOFTWARE, null);
-            //startMarker.setIcon(getResources().getDrawable(R.drawable.m_hole));
-            startMarker.setPosition(new GeoPoint(lat, lon));
-            startMarker.setTitle(String.valueOf(value));
-        }
-        query.close();
-        db.close();
+                    /// Создаем объект OverlayItem
+                    Marker startMarker = new Marker(mapView);
+                    startMarker.setDraggable(false);
+                    startMarker.setAnchor(0.5f, 0.5f);
+                    // Включить аппаратное ускорение для карты
+                    mapView.setLayerType(View.LAYER_TYPE_SOFTWARE, null);
+                    startMarker.setIcon(getResources().getDrawable(R.drawable.m_hole1));
+                    startMarker.setPosition(new GeoPoint(lat, lon));
+                    startMarker.setTitle(String.valueOf(value));
 
-        mapView.invalidate();
+                    // Добавление маркера на карту
+                    mapView.getOverlays().add(startMarker);
+                }
+                query.close();
+                db.close();
+
+                mapView.invalidate();
+            }
+        });
     }
 
 
@@ -353,17 +389,33 @@ public class MainActivity extends AppCompatActivity {
                 Manifest.permission.WRITE_EXTERNAL_STORAGE
         ) == PackageManager.PERMISSION_GRANTED;
 
+        isReadPermissionGranted = ContextCompat.checkSelfPermission(
+                this,
+                Manifest.permission.READ_EXTERNAL_STORAGE
+        ) == PackageManager.PERMISSION_GRANTED;
+
         isLocationPermissionGranted = ContextCompat.checkSelfPermission(
                 this,
                 Manifest.permission.ACCESS_FINE_LOCATION
+        ) == PackageManager.PERMISSION_GRANTED;
+
+        isBackLocationPermissionGranted = ContextCompat.checkSelfPermission(
+                this,
+                Manifest.permission.ACCESS_BACKGROUND_LOCATION
         ) == PackageManager.PERMISSION_GRANTED;
 
         List<String> permissionRequest = new ArrayList<String>();
         if(!isWritePermissionGranted){
             permissionRequest.add(Manifest.permission.WRITE_EXTERNAL_STORAGE);
         }
+        if(!isReadPermissionGranted){
+            permissionRequest.add(Manifest.permission.READ_EXTERNAL_STORAGE);
+        }
         if(!isLocationPermissionGranted){
             permissionRequest.add(Manifest.permission.ACCESS_FINE_LOCATION);
+        }
+        if(!isBackLocationPermissionGranted){
+            permissionRequest.add(Manifest.permission.ACCESS_BACKGROUND_LOCATION);
         }
 
         if (!permissionRequest.isEmpty()){
@@ -394,7 +446,7 @@ public class MainActivity extends AppCompatActivity {
             }
         }
     }
-
+    private boolean isUpdating = false;
     private void updateUIWithGPSData(double latitude, double longitude, double speed) {
         runOnUiThread(new Runnable() {
             @SuppressLint("SetTextI18n")
@@ -413,6 +465,7 @@ public class MainActivity extends AppCompatActivity {
                 // Обновление позиции маркера
                 currentMarker.setPosition(new GeoPoint(latitude, longitude));
                 mapView.getController().setCenter(new GeoPoint(latitude, longitude));
+
                 mapView.invalidate(); // Обновление карты
             }
         });
@@ -454,6 +507,7 @@ public class MainActivity extends AppCompatActivity {
     protected void onPause() {
         super.onPause();
         accelerometerTextView.setText("");
+        gpsTextView.setText("");
         mapView.onPause();
         unregisterReceiver(receiver);
 
