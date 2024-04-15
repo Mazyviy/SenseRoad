@@ -25,8 +25,11 @@ import android.content.pm.PackageManager;
 import android.location.LocationManager;
 import android.os.Handler;
 import androidx.core.content.ContextCompat;
+
+import android.os.PowerManager;
 import android.preference.PreferenceManager;
 import android.provider.Settings;
+import android.view.MotionEvent;
 import android.view.View;
 import android.view.WindowManager;
 import android.widget.Button;
@@ -120,7 +123,6 @@ public class MainActivity extends AppCompatActivity {
         receiver = new MyBroadcastReceiver(new Handler()); // Create the receiver
         registerReceiver(receiver, new IntentFilter("gpsDataUpdated")); // Register receiver
         registerReceiver(receiver, new IntentFilter("accelerometerDataUpdated")); // Register receiver
-
 
         ActivityResultCallback<Map<String, Boolean>> callback = new ActivityResultCallback<Map<String, Boolean>>() {
             @Override
@@ -353,6 +355,7 @@ public class MainActivity extends AppCompatActivity {
 
                 // Очистка существующих маркеров на карте
                 mapView.getOverlays().clear();
+                currentMarker=null;
 
                 // print database
                 Cursor query = db.rawQuery("SELECT * FROM hole;", null);
@@ -446,7 +449,66 @@ public class MainActivity extends AppCompatActivity {
             }
         }
     }
-    private boolean isUpdating = false;
+
+   /* private boolean isUpdating = true;
+
+    @Override
+    public boolean onTouchEvent(MotionEvent event) {
+        switch (event.getAction()) {
+            case MotionEvent.ACTION_DOWN:
+                // Прекратить обновление, когда нажата карта
+                isUpdating = false;
+               break;
+            case MotionEvent.ACTION_MOVE: // движение
+                isUpdating = false;
+                break;
+            case MotionEvent.ACTION_UP:
+                // Начать обновление снова через 3 секунды, когда отпущена карта
+                new Handler().postDelayed(new Runnable() {
+                    @Override
+                    public void run() {
+                        isUpdating = true;
+                    }
+                }, 3000);
+                break;
+        }
+        return true;
+    }*/
+
+
+    private boolean isUpdating = true;
+    private final Object lock = new Object();
+    private Handler handler1 = new Handler();
+
+    @Override
+    public boolean onTouchEvent(MotionEvent event) {
+        switch (event.getAction()) {
+            case MotionEvent.ACTION_DOWN:
+                synchronized (lock) {
+                    isUpdating = false;
+                }
+                handler.removeCallbacksAndMessages(null); // Очистить все предыдущие задания
+                break;
+            case MotionEvent.ACTION_MOVE:
+                // Ничего не делать при движении, чтобы избежать дополнительных обновлений UI
+                synchronized (lock) {
+                    isUpdating = false;
+                }
+                handler.removeCallbacksAndMessages(null); // Очистить все предыдущие задания
+                break;
+            case MotionEvent.ACTION_UP:
+
+                handler.postDelayed(() -> {
+                    synchronized (lock) {
+                        isUpdating = true;
+                    } // Обновление UI после отпускания экрана
+                }, 3000);
+                break;
+        }
+        return true;
+    }
+
+
     private void updateUIWithGPSData(double latitude, double longitude, double speed) {
         runOnUiThread(new Runnable() {
             @SuppressLint("SetTextI18n")
@@ -454,23 +516,29 @@ public class MainActivity extends AppCompatActivity {
             public void run() {
                 gpsTextView.setText("GPS\n=>Latitude: " + latitude +
                         "\n=>Longitude: " + longitude
-                +"\n=>Speed: " + speed);
+                        +"\n=>Speed: " + speed);
 
-                // Если маркер еще не создан, создаем новый маркер
-                if (currentMarker == null) {
-                    currentMarker = new Marker(mapView);
-                    currentMarker.setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_BOTTOM);
-                    mapView.getOverlays().add(currentMarker);
+                boolean updating;
+                synchronized (lock) {
+                    updating = isUpdating;
                 }
-                // Обновление позиции маркера
-                currentMarker.setPosition(new GeoPoint(latitude, longitude));
-                mapView.getController().setCenter(new GeoPoint(latitude, longitude));
 
-                mapView.invalidate(); // Обновление карты
+                if (updating) {
+                    // Если маркер еще не создан, создаем новый маркер
+                    if (currentMarker == null) {
+                        currentMarker = new Marker(mapView);
+                        currentMarker.setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_BOTTOM);
+                        mapView.getOverlays().add(currentMarker);
+                    }
+                    // Обновление позиции маркера
+                    currentMarker.setPosition(new GeoPoint(latitude, longitude));
+                    mapView.getController().setCenter(new GeoPoint(latitude, longitude));
+                    mapView.invalidate(); // Обновление карты
+                }
             }
         });
     }
-
+    
     private void updateUIWithAccelerometerData(float[] accelerometerValue, float[] linearAccelerometerValue, float[] gravityValue) {
         runOnUiThread(new Runnable() {
             @SuppressLint("SetTextI18n")
@@ -506,10 +574,10 @@ public class MainActivity extends AppCompatActivity {
     @Override
     protected void onPause() {
         super.onPause();
+        unregisterReceiver(receiver);
+        mapView.onPause();
         accelerometerTextView.setText("");
         gpsTextView.setText("");
-        mapView.onPause();
-        unregisterReceiver(receiver);
 
         if (!checkLocationEnabled()) showLocationAlert();
     }

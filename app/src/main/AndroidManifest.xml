@@ -42,6 +42,7 @@
 
             android:configChanges="orientation|keyboardHidden|screenSize"
             android:exported="true" />
+
         <activity
             android:name=".LoginActivity"
             android:exported="true"

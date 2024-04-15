@@ -4,6 +4,7 @@ import android.Manifest;
 import android.app.Notification;
 import android.app.NotificationChannel;
 import android.app.NotificationManager;
+import android.app.PendingIntent;
 import android.app.Service;
 import android.content.Context;
 import android.content.Intent;
@@ -18,6 +19,7 @@ import android.location.LocationListener;
 import android.location.LocationManager;
 import android.net.ConnectivityManager;
 import android.net.NetworkInfo;
+import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.IBinder;
@@ -26,6 +28,8 @@ import android.preference.PreferenceManager;
 import android.text.TextUtils;
 import android.widget.Toast;
 import androidx.core.app.ActivityCompat;
+import androidx.core.app.NotificationCompat;
+import androidx.core.app.NotificationManagerCompat;
 
 import org.json.JSONException;
 import org.json.JSONObject;
@@ -121,12 +125,14 @@ public class MyService extends Service implements SensorEventListener, LocationL
         handler.postDelayed(runnable, SEND_OR_SAVE_INTERVAL);
 
         final String CHANNEL_ID = "Foreground service";
-        NotificationChannel channel = new NotificationChannel(CHANNEL_ID, CHANNEL_ID, NotificationManager.IMPORTANCE_LOW);
+        NotificationChannel channel = new NotificationChannel(CHANNEL_ID, CHANNEL_ID, NotificationManager.IMPORTANCE_DEFAULT);
         getSystemService(NotificationManager.class).createNotificationChannel(channel);
 
         Notification.Builder notification = new Notification.Builder(this, CHANNEL_ID)
                 .setContentTitle("Run SensRoad")
-                .setContentText("Запущена служба SensRoad");
+                .setContentText("Запущена служба SensRoad")
+                .setPriority(Notification.PRIORITY_DEFAULT)
+                .setOngoing(true); // Установка уведомления как постоянного
 
         startForeground(1001, notification.build());
 
