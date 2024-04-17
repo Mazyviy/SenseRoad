@@ -256,7 +256,6 @@ public class MyService extends Service implements SensorEventListener, LocationL
         Intent broadcastIntent = new Intent("accelerometerDataUpdated");
         broadcastIntent.putExtra("accelerometerValue", accelerometerValue);
         broadcastIntent.putExtra("linearAccelerometerValue", linearAccelerometerValue);
-        broadcastIntent.putExtra("gravityValue", gravityValue);
         sendBroadcast(broadcastIntent);
     }
 

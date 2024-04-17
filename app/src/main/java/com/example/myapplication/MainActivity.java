@@ -370,7 +370,7 @@ public class MainActivity extends AppCompatActivity {
                     startMarker.setAnchor(0.5f, 0.5f);
                     // Включить аппаратное ускорение для карты
                     mapView.setLayerType(View.LAYER_TYPE_SOFTWARE, null);
-                    startMarker.setIcon(getResources().getDrawable(R.drawable.m_hole1));
+                    startMarker.setIcon(getResources().getDrawable(R.drawable.hole24));
                     startMarker.setPosition(new GeoPoint(lat, lon));
                     startMarker.setTitle(String.valueOf(value));
 
@@ -444,37 +444,20 @@ public class MainActivity extends AppCompatActivity {
             } else if (intent.getAction().equals("accelerometerDataUpdated")) {
                 float[] accelerometerValue = intent.getFloatArrayExtra("accelerometerValue");
                 float[] linearAccelerometerValue = intent.getFloatArrayExtra("linearAccelerometerValue");
-                float[] gravityValue = intent.getFloatArrayExtra("gravityValue");
-                updateUIWithAccelerometerData(accelerometerValue, linearAccelerometerValue, gravityValue);
+                updateUIWithAccelerometerData(accelerometerValue, linearAccelerometerValue);
             }
         }
     }
 
-   /* private boolean isUpdating = true;
-
-    @Override
-    public boolean onTouchEvent(MotionEvent event) {
-        switch (event.getAction()) {
-            case MotionEvent.ACTION_DOWN:
-                // Прекратить обновление, когда нажата карта
-                isUpdating = false;
-               break;
-            case MotionEvent.ACTION_MOVE: // движение
-                isUpdating = false;
-                break;
-            case MotionEvent.ACTION_UP:
-                // Начать обновление снова через 3 секунды, когда отпущена карта
-                new Handler().postDelayed(new Runnable() {
-                    @Override
-                    public void run() {
-                        isUpdating = true;
-                    }
-                }, 3000);
-                break;
+    private boolean isMyServiceRunning(Class<?> serviceClass) {
+        ActivityManager manager = (ActivityManager) getSystemService(Context.ACTIVITY_SERVICE);
+        for (ActivityManager.RunningServiceInfo service : manager.getRunningServices(Integer.MAX_VALUE)) {
+            if (serviceClass.getName().equals(service.service.getClassName())) {
+                return true;
+            }
         }
-        return true;
-    }*/
-
+        return false;
+    }
 
     private boolean isUpdating = true;
     private final Object lock = new Object();
@@ -516,14 +499,15 @@ public class MainActivity extends AppCompatActivity {
             public void run() {
                 gpsTextView.setText("GPS\n=>Latitude: " + latitude +
                         "\n=>Longitude: " + longitude
-                        +"\n=>Speed: " + speed);
+                        +"\n=>Speed: " + speed/1000*3600);
 
                 boolean updating;
                 synchronized (lock) {
                     updating = isUpdating;
                 }
 
-                if (updating) {
+                boolean status_service=isMyServiceRunning(MyService.class);
+                if (updating && status_service) {
                     // Если маркер еще не создан, создаем новый маркер
                     if (currentMarker == null) {
                         currentMarker = new Marker(mapView);
@@ -539,7 +523,7 @@ public class MainActivity extends AppCompatActivity {
         });
     }
     
-    private void updateUIWithAccelerometerData(float[] accelerometerValue, float[] linearAccelerometerValue, float[] gravityValue) {
+    private void updateUIWithAccelerometerData(float[] accelerometerValue, float[] linearAccelerometerValue) {
         runOnUiThread(new Runnable() {
             @SuppressLint("SetTextI18n")
             @Override
@@ -548,9 +532,6 @@ public class MainActivity extends AppCompatActivity {
                 accelerometerTextView.setText("Accelerometer\n=>X: " + dF.format(accelerometerValue[0]) +
                         "\n=>Y: " + dF.format(accelerometerValue[1]) +
                         "\n=>Z: " + dF.format(accelerometerValue[2])+
-                        "\n"+dF.format(gravityValue[0])+
-                        "\n"+dF.format(gravityValue[1])+
-                        "\n"+ dF.format(gravityValue[2])+
                         "\n=>Xl: " + dF.format(linearAccelerometerValue[0]) +
                         "\n=>Yl: " + dF.format(linearAccelerometerValue[1]) +
                         "\n=>Zl: " + dF.format(linearAccelerometerValue[2])
