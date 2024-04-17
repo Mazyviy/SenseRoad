@@ -256,7 +256,6 @@ public class MyService extends Service implements SensorEventListener, LocationL
         Intent broadcastIntent = new Intent("accelerometerDataUpdated");
         broadcastIntent.putExtra("accelerometerValue", accelerometerValue);
         broadcastIntent.putExtra("linearAccelerometerValue", linearAccelerometerValue);
-        broadcastIntent.putExtra("gravityValue", gravityValue);
         sendBroadcast(broadcastIntent);
     }
 
@@ -334,7 +333,7 @@ public class MyService extends Service implements SensorEventListener, LocationL
                 if (!directory.exists()) {
                     directory.mkdirs();
                 }
-                File user_dir = new File(directory, "c");
+                File user_dir = new File(directory, "data");
                 if (!user_dir.exists()) {
                     user_dir.mkdirs();
                 }
@@ -374,7 +373,7 @@ public class MyService extends Service implements SensorEventListener, LocationL
             @Override
             public void run() {
                 File directory = getFilesDir();
-                File user_dir = new File(directory, "user_dir");
+                File user_dir = new File(directory, "data");
                 File[] files = user_dir.listFiles();
 
                 if (files != null) {
