@@ -115,13 +115,13 @@ public class MainActivity extends AppCompatActivity {
                     gpsTextView.setText("");
                     stopService(new Intent(MainActivity.this, MyService.class));
                     isServiceRunning = false;
-                    btnStartService.setText("Запустить службу");
+                    btnStartService.setText("Запустить сервис");
                 } else {
                     if (!checkLocationEnabled()) showLocationAlert();
                     else {
                         startForegroundService(new Intent(MainActivity.this, MyService.class));
                         isServiceRunning = true;
-                        btnStartService.setText("Остановить службу");
+                        btnStartService.setText("Остановить сервис");
                     }
                 }
             }
