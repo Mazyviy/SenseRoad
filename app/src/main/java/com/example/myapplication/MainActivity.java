@@ -115,13 +115,13 @@ public class MainActivity extends AppCompatActivity {
                     gpsTextView.setText("");
                     stopService(new Intent(MainActivity.this, MyService.class));
                     isServiceRunning = false;
-                    btnStartService.setText("Запустить сервис");
+                    btnStartService.setText("Запустить службу");
                 } else {
                     if (!checkLocationEnabled()) showLocationAlert();
                     else {
                         startForegroundService(new Intent(MainActivity.this, MyService.class));
                         isServiceRunning = true;
-                        btnStartService.setText("Остановить сервис");
+                        btnStartService.setText("Остановить службу");
                     }
                 }
             }
@@ -177,7 +177,6 @@ public class MainActivity extends AppCompatActivity {
         if (!checkLocationEnabled()) showLocationAlert();
 
     }
-
 
     private void checkInternetConnection() {
         pool.submit(new Runnable() {
@@ -397,6 +396,7 @@ public class MainActivity extends AppCompatActivity {
                 this,
                 Manifest.permission.ACCESS_FINE_LOCATION
         ) == PackageManager.PERMISSION_GRANTED;
+
 
         List<String> permissionRequest = new ArrayList<String>();
         if(!isWritePermissionGranted){
