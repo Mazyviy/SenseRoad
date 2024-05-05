@@ -23,6 +23,7 @@ import android.Manifest;
 import android.content.Context;
 import android.content.pm.PackageManager;
 import android.location.LocationManager;
+import android.os.Environment;
 import android.os.Handler;
 import androidx.core.content.ContextCompat;
 
@@ -86,6 +87,7 @@ public class MainActivity extends AppCompatActivity {
     private Handler handler = new Handler();
     private ExecutorService pool = Executors.newSingleThreadExecutor();
 
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
@@ -136,7 +138,7 @@ public class MainActivity extends AppCompatActivity {
         ScaleBarOverlay myScaleBarOverlay = new ScaleBarOverlay(mapView);
         mapView.getOverlays().add(myScaleBarOverlay);
         MapController mapController = (MapController) mapView.getController();
-        mapController.setZoom(13);
+        mapController.setZoom(3);
 
         // Регистрация приемника широковещательных сообщений
         receiver = new MyBroadcastReceiver(new Handler()); // Create the receiver
@@ -175,8 +177,8 @@ public class MainActivity extends AppCompatActivity {
         readHoleServer();
 
         if (!checkLocationEnabled()) showLocationAlert();
-
     }
+
 
     private void checkInternetConnection() {
         pool.submit(new Runnable() {
@@ -188,6 +190,7 @@ public class MainActivity extends AppCompatActivity {
             }
         });
     }
+
 
     public void checkServerConnection() {
         pool.submit(new Runnable() {
@@ -225,6 +228,7 @@ public class MainActivity extends AppCompatActivity {
             alert.getWindow().setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_STATE_ALWAYS_VISIBLE);
     }
 
+
     public void updateUrl(View view){
         final EditText input = new EditText(context);
         requestStringInDialog("server URL", "Edit server address", URL, input,
@@ -238,6 +242,7 @@ public class MainActivity extends AppCompatActivity {
                 }, theActivity, context);
     }
 
+
     private boolean checkLocationEnabled() {
         LocationManager locationManager = (LocationManager) getSystemService(LOCATION_SERVICE);
         if (!locationManager.isProviderEnabled(LocationManager.GPS_PROVIDER)) {
@@ -245,6 +250,7 @@ public class MainActivity extends AppCompatActivity {
         }
         else return true;
     }
+
 
     private void showLocationAlert() {
         AlertDialog.Builder dialog = new AlertDialog.Builder(this);
@@ -259,6 +265,7 @@ public class MainActivity extends AppCompatActivity {
         dialog.show();
     }
 
+
     public  boolean foregroundServiceRunning() {
         ActivityManager activityManager = (ActivityManager) getSystemService(Context.ACTIVITY_SERVICE);
 
@@ -270,9 +277,11 @@ public class MainActivity extends AppCompatActivity {
         return false;
     }
 
+
     public void uploadHole(View view) {
         readHoleServer();
     }
+
 
     private void uploadHoleServer(){
         pool.submit(new Runnable() {
@@ -308,12 +317,11 @@ public class MainActivity extends AppCompatActivity {
                     JSONArray dataArray = jsonResponse.getJSONArray("hole");
 
                     // create database
-                    File directory = getFilesDir();
-                    File hole_dir = new File(directory, "hole");
-                    if (!hole_dir.exists()) {
-                        hole_dir.mkdirs(); // Создание каталога, если он не существует
+                    File directory = new File(Environment.getExternalStorageDirectory() + "/RoadSense/hole/");
+                    if (!directory.exists()) {
+                        directory.mkdirs(); // Создание каталога, если он не существует
                     }
-                    File dbFile = new File(hole_dir, "sense.db");
+                    File dbFile = new File(directory, "sense.db");
 
                     SQLiteDatabase db = SQLiteDatabase.openOrCreateDatabase(dbFile, null);
 
@@ -339,13 +347,13 @@ public class MainActivity extends AppCompatActivity {
         });
     }
 
+
     private void readHoleServer(){
         pool.submit(new Runnable() {
             @Override
             public void run() {
-                File directory = getFilesDir();
-                File hole_dir = new File(directory, "hole");
-                File dbFile = new File(hole_dir, "sense.db");
+                File directory = new File(Environment.getExternalStorageDirectory() + "/RoadSense/hole/");
+                File dbFile = new File(directory, "sense.db");
                 SQLiteDatabase db = SQLiteDatabase.openOrCreateDatabase(dbFile, null);
 
                 // Очистка существующих маркеров на карте
@@ -397,7 +405,6 @@ public class MainActivity extends AppCompatActivity {
                 Manifest.permission.ACCESS_FINE_LOCATION
         ) == PackageManager.PERMISSION_GRANTED;
 
-
         List<String> permissionRequest = new ArrayList<String>();
         if(!isWritePermissionGranted){
             permissionRequest.add(Manifest.permission.WRITE_EXTERNAL_STORAGE);
@@ -413,6 +420,7 @@ public class MainActivity extends AppCompatActivity {
             mPermissionResultLauncher.launch(permissionRequest.toArray(new String[0]));
         }
     }
+
 
     public class MyBroadcastReceiver extends BroadcastReceiver {
         private final Handler handler; // Handler used to execute code on the UI thread
@@ -436,6 +444,7 @@ public class MainActivity extends AppCompatActivity {
             }
         }
     }
+
 
     private boolean isUpdating = true;
     private final Object lock = new Object();
@@ -488,7 +497,7 @@ public class MainActivity extends AppCompatActivity {
                     // Если маркер еще не создан, создаем новый маркер
                     if (currentMarker == null) {
                         currentMarker = new Marker(mapView);
-                        currentMarker.setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_BOTTOM);
+                        currentMarker.setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_CENTER);
                         mapView.getOverlays().add(currentMarker);
                     }
                     // Обновление позиции маркера
@@ -499,7 +508,8 @@ public class MainActivity extends AppCompatActivity {
             }
         });
     }
-    
+
+
     private void updateUIWithAccelerometerData(float[] accelerometerValue, float[] linearAccelerometerValue) {
         runOnUiThread(new Runnable() {
             @SuppressLint("SetTextI18n")
@@ -517,6 +527,7 @@ public class MainActivity extends AppCompatActivity {
         });
     }
 
+
     @Override
     protected void onResume() {
         super.onResume();
@@ -529,6 +540,7 @@ public class MainActivity extends AppCompatActivity {
         if (!checkLocationEnabled()) showLocationAlert();
     }
 
+
     @Override
     protected void onPause() {
         super.onPause();
@@ -539,6 +551,7 @@ public class MainActivity extends AppCompatActivity {
 
         if (!checkLocationEnabled()) showLocationAlert();
     }
+
 
     @Override
     protected void onDestroy() {

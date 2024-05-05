@@ -21,6 +21,7 @@ import android.net.ConnectivityManager;
 import android.net.NetworkInfo;
 import android.os.Build;
 import android.os.Bundle;
+import android.os.Environment;
 import android.os.Handler;
 import android.os.IBinder;
 import android.os.PowerManager;
@@ -83,6 +84,7 @@ public class MyService extends Service implements SensorEventListener, LocationL
     private static final String TAG = MyService.class.getSimpleName();
     private PowerManager.WakeLock wakeLock;
 
+
     public void onCreate() {
         super.onCreate();
         // Инициализация датчиков
@@ -108,6 +110,7 @@ public class MyService extends Service implements SensorEventListener, LocationL
             URL = userUrl;
         }
     }
+
 
     public int onStartCommand(Intent intent, int flag, int startId) {
         // Регистрация слушателей датчиков
@@ -142,6 +145,7 @@ public class MyService extends Service implements SensorEventListener, LocationL
         return super.onStartCommand(intent, flag, startId);
     }
 
+
     private void checkLocationEnabled() {
         LocationManager locationManager = (LocationManager) getSystemService(LOCATION_SERVICE);
         if (!locationManager.isProviderEnabled(LocationManager.GPS_PROVIDER)) {
@@ -149,6 +153,7 @@ public class MyService extends Service implements SensorEventListener, LocationL
             stopSelf();
         }
     }
+
 
     private Runnable runnable = new Runnable() {
         @Override
@@ -158,6 +163,7 @@ public class MyService extends Service implements SensorEventListener, LocationL
             handler.postDelayed(this, SEND_OR_SAVE_INTERVAL); // Запуск задачи через 3 минуты снова
         }
     };
+
 
     public void onDestroy() {
         super.onDestroy();
@@ -173,10 +179,12 @@ public class MyService extends Service implements SensorEventListener, LocationL
         }
     }
 
+
     @Override
     public IBinder onBind(Intent intent) {
         return null;
     }
+
 
     @Override
     public void onSensorChanged(SensorEvent event) {
@@ -214,9 +222,11 @@ public class MyService extends Service implements SensorEventListener, LocationL
         sendAccelerometerBroadcast();
     }
 
+
     @Override
     public void onAccuracyChanged(Sensor sensor, int i) {
     }
+
 
     @Override
     public void onLocationChanged(Location location) {
@@ -228,20 +238,24 @@ public class MyService extends Service implements SensorEventListener, LocationL
         sendGPSToBroadcast();
     }
 
+
     @Override
     public void onStatusChanged(String provider, int status, Bundle extras) {
         // Ваша логика обработки изменения статуса
     }
+
 
     @Override
     public void onProviderEnabled(String provider) {
         // Ваша логика обработки включения провайдера
     }
 
+
     @Override
     public void onProviderDisabled(String provider) {
         // Ваша логика обработки отключения провайдера
     }
+
 
     private void sendGPSToBroadcast() {
         Intent broadcastIntent = new Intent("gpsDataUpdated");
@@ -251,6 +265,7 @@ public class MyService extends Service implements SensorEventListener, LocationL
         sendBroadcast(broadcastIntent);
     }
 
+
     private void sendAccelerometerBroadcast() {
         // Отправка широковещательного сообщения с целочисленным значением
         Intent broadcastIntent = new Intent("accelerometerDataUpdated");
@@ -258,6 +273,7 @@ public class MyService extends Service implements SensorEventListener, LocationL
         broadcastIntent.putExtra("linearAccelerometerValue", linearAccelerometerValue);
         sendBroadcast(broadcastIntent);
     }
+
 
     private void checkInternetConnection() {
         pool.submit(new Runnable() {
@@ -269,6 +285,7 @@ public class MyService extends Service implements SensorEventListener, LocationL
             }
         });
     }
+
 
     public void checkServerConnection() {
         pool.submit(new Runnable() {
@@ -289,12 +306,14 @@ public class MyService extends Service implements SensorEventListener, LocationL
         });
     }
 
+
     private void addDataToLists() {
-        if (accelerometerData != null && gpsData != null && speed > 1.5) {
+        if (accelerometerData != null && gpsData != null){// && speed > 1.5) {
             dataArrayList.add(new SimpleDateFormat("yyyy-MM-dd HH:mm:ss.SSS", Locale.US).format(System.currentTimeMillis())
                     + "; " + gpsData + "; " + accelerometerData +"\n");
         }
     }
+
 
     private void sendData() {
         pool.submit(new Runnable() {
@@ -323,21 +342,17 @@ public class MyService extends Service implements SensorEventListener, LocationL
         });
     }
 
+
     private void saveDataToFile(String data) {
         pool.submit(new Runnable() {
             @Override
             public void run() {
-
-                String fileName = new SimpleDateFormat("yyyy-MM-dd HHmm", Locale.US).format(new Date()) + ".txt";
-                File directory = getFilesDir();
+                String fileName = new SimpleDateFormat("yyyy-MM-dd HHmm", Locale.US).format(new Date()) + ".csv";
+                File directory = new File(Environment.getExternalStorageDirectory() + "/RoadSense/user_data/");
                 if (!directory.exists()) {
-                    directory.mkdirs();
+                    directory.mkdir();
                 }
-                File user_dir = new File(directory, "user_data");
-                if (!user_dir.exists()) {
-                    user_dir.mkdirs();
-                }
-                File file_user = new File(user_dir, fileName);
+                File file_user = new File(directory, fileName);
 
                 try {
                     BufferedWriter writer1 = new BufferedWriter(new FileWriter(file_user));
@@ -352,6 +367,7 @@ public class MyService extends Service implements SensorEventListener, LocationL
             }
         });
     }
+
 
     private String readFileContents(File file) {
         StringBuilder stringBuilder = new StringBuilder();
@@ -368,13 +384,13 @@ public class MyService extends Service implements SensorEventListener, LocationL
         return stringBuilder.toString();
     }
 
+
     private void sendDataFromFilesToServer() {
         pool.submit(new Runnable() {
             @Override
             public void run() {
-                File directory = getFilesDir();
-                File user_dir = new File(directory, "user_data");
-                File[] files = user_dir.listFiles();
+                File directory = new File(Environment.getExternalStorageDirectory() + "/RoadSense/user_data/");
+                File[] files = directory.listFiles();
 
                 if (files != null) {
                     for (File file : files) {
@@ -388,6 +404,7 @@ public class MyService extends Service implements SensorEventListener, LocationL
             }
         });
     }
+
 
     private void sendSensorDataToServer(String data) {
         pool.submit(new Runnable() {
