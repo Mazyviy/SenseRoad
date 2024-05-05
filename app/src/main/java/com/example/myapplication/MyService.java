@@ -308,7 +308,7 @@ public class MyService extends Service implements SensorEventListener, LocationL
 
 
     private void addDataToLists() {
-        if (accelerometerData != null && gpsData != null){// && speed > 1.5) {
+        if (accelerometerData != null && gpsData != null && speed > 1.5) {
             dataArrayList.add(new SimpleDateFormat("yyyy-MM-dd HH:mm:ss.SSS", Locale.US).format(System.currentTimeMillis())
                     + "; " + gpsData + "; " + accelerometerData +"\n");
         }
