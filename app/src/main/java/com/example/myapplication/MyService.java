@@ -348,7 +348,8 @@ public class MyService extends Service implements SensorEventListener, LocationL
             @Override
             public void run() {
                 String fileName = new SimpleDateFormat("yyyy-MM-dd HHmm", Locale.US).format(new Date()) + ".csv";
-                File directory = new File(Environment.getExternalStorageDirectory() + "/RoadSense/user_data/");
+                //File directory = new File(Environment.getExternalStorageDirectory() + "/RoadSense/user_data/");
+                File directory = new File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOCUMENTS)+ "/RoadSense/user_data/");
                 if (!directory.exists()) {
                     directory.mkdir();
                 }
@@ -389,7 +390,8 @@ public class MyService extends Service implements SensorEventListener, LocationL
         pool.submit(new Runnable() {
             @Override
             public void run() {
-                File directory = new File(Environment.getExternalStorageDirectory() + "/RoadSense/user_data/");
+                //File directory = new File(Environment.getExternalStorageDirectory() + "/RoadSense/user_data/");
+                File directory = new File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOCUMENTS)+ "/RoadSense/user_data/");
                 File[] files = directory.listFiles();
 
                 if (files != null) {

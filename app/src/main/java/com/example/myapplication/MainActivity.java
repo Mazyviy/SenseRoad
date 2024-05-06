@@ -109,6 +109,17 @@ public class MainActivity extends AppCompatActivity {
             applicationPrefs.edit().putString(URL_KEY, URL).apply();
         else URL = applicationPrefs.getString(URL_KEY, URL);
 
+        // Инициализация карты
+        Configuration.getInstance().setUserAgentValue(getPackageName());
+        mapView = findViewById(R.id.mapView);
+        mapView.setTileSource(TileSourceFactory.MAPNIK);
+        mapView.setBuiltInZoomControls(true);
+        mapView.setMultiTouchControls(true);
+        ScaleBarOverlay myScaleBarOverlay = new ScaleBarOverlay(mapView);
+        mapView.getOverlays().add(myScaleBarOverlay);
+        MapController mapController = (MapController) mapView.getController();
+        mapController.setZoom(3);
+
         btnStartService.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View view) {
@@ -121,6 +132,7 @@ public class MainActivity extends AppCompatActivity {
                 } else {
                     if (!checkLocationEnabled()) showLocationAlert();
                     else {
+                        mapController.setZoom(13);
                         startForegroundService(new Intent(MainActivity.this, MyService.class));
                         isServiceRunning = true;
                         btnStartService.setText("Остановить сервис");
@@ -128,17 +140,6 @@ public class MainActivity extends AppCompatActivity {
                 }
             }
         });
-
-        // Инициализация карты
-        Configuration.getInstance().setUserAgentValue(getPackageName());
-        mapView = findViewById(R.id.mapView);
-        mapView.setTileSource(TileSourceFactory.MAPNIK);
-        mapView.setBuiltInZoomControls(true);
-        mapView.setMultiTouchControls(true);
-        ScaleBarOverlay myScaleBarOverlay = new ScaleBarOverlay(mapView);
-        mapView.getOverlays().add(myScaleBarOverlay);
-        MapController mapController = (MapController) mapView.getController();
-        mapController.setZoom(3);
 
         // Регистрация приемника широковещательных сообщений
         receiver = new MyBroadcastReceiver(new Handler()); // Create the receiver
@@ -317,7 +318,8 @@ public class MainActivity extends AppCompatActivity {
                     JSONArray dataArray = jsonResponse.getJSONArray("hole");
 
                     // create database
-                    File directory = new File(Environment.getExternalStorageDirectory() + "/RoadSense/hole/");
+                    //File directory = new File(Environment.getExternalStorageDirectory() + "/RoadSense/hole/");
+                    File directory = new File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOCUMENTS)+ "/RoadSense/hole/");
                     if (!directory.exists()) {
                         directory.mkdirs(); // Создание каталога, если он не существует
                     }
@@ -352,7 +354,8 @@ public class MainActivity extends AppCompatActivity {
         pool.submit(new Runnable() {
             @Override
             public void run() {
-                File directory = new File(Environment.getExternalStorageDirectory() + "/RoadSense/hole/");
+                //File directory = new File(Environment.getExternalStorageDirectory() + "/RoadSense/hole/");
+                File directory = new File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOCUMENTS)+ "/RoadSense/hole/");
                 File dbFile = new File(directory, "sense.db");
                 SQLiteDatabase db = SQLiteDatabase.openOrCreateDatabase(dbFile, null);
 
